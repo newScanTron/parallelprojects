@@ -1,16 +1,16 @@
 
 #include "omp.h"
 #include <stdio.h>
+#include <time.h>
 static long num_steps = 100000;
 double step;
-#define NUM_THREADS 2
+#define NUM_THREADS 12
 int main(int argc, char *argv[])
 {
   int  nthreads;
-  double  pi;
-  double sum[NUM_THREADS];
+  double sum;
   step = 1.0/(double)num_steps;
-
+  double firstTime = omp_get_wtime();
 
   omp_set_num_threads(NUM_THREADS);
   #pragma omp parallel
@@ -28,26 +28,23 @@ int main(int argc, char *argv[])
           if (threadNum == 0)
           {
             nthreads = numThreads;
-            printf("num of threads: %d %d\n", nthreads, threadNum);
+          //  printf("num of threads: %d %d\n", nthreads, threadNum);
           }
-        for (i=start;i<localMax;i++)
+          #pragma omp for schedule(staic , 100)
+        // for (i=start;i<localMax;i++)
+        for (i=0;i<num_steps;i++)
         {
         	double x = (i+0.5)*step;
         	disSum += 4.0/(1.0+x*x);
-          //printf("summ[]: %f \n", sum[threadNum]);
         }
-        #pragma omp critical
-        {
-          sum[threadNum] = disSum;
-            printf("time: %f \n", omp_get_wtime());
-        }
+        #pragma omp atomic
+          sum += disSum * step;
+
+
 }
-      int i;
-      for (i=0;i<nthreads;i++)
-      {
-        pi += step * sum[i];
-      }
-      printf("pi: (%f)\n", pi);
-      printf("time: %f \n", omp_get_wtime());
+double secondTime = omp_get_wtime() - firstTime;
+  printf("time: %f \n", secondTime);
+      printf("pi: (%f)\n", sum);
+
       return 0;
 }
