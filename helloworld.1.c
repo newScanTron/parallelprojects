@@ -12,7 +12,7 @@ int main(int argc, char *argv[])
   step = 1.0/(double)num_steps;
   double firstTime = omp_get_wtime();
 printf("max threads: %d \n", omp_get_max_threads());
-printf("number of procssors: %d \n", omp_num_procs());
+
 
   omp_set_num_threads(NUM_THREADS);
 double pi = 0.0;
