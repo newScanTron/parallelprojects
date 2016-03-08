@@ -20,8 +20,6 @@
 # define NPOINTS 1000
 # define MAXITER 1000
 
-
-
 struct d_complex{
    double r;
    double i;
@@ -34,20 +32,16 @@ int main(){
    int i, j;
    double area, error, eps  = 1.0e-5;
 
-   omp_lock_t outsideLock;
-   omp_init_lock(&outsideLock);
 //   Loop over grid of points in the complex plane which contains the Mandelbrot set,
 //   testing each point to see whether it is inside or outside the set.
 
-#pragma omp parallel for default(shared) firstprivate(eps) private(c, j)
+#pragma omp parallel for default(none) firstprivate(eps) private(c, j)
    for (i=0; i<NPOINTS; i++) {
      for (j=0; j<NPOINTS; j++) {
        c.r = -2.0+2.5*(double)(i)/(double)(NPOINTS)+eps;
        c.i = 1.125*(double)(j)/(double)(NPOINTS)+eps;
 
         testpoint(c);
-
-
      }
    }
 
@@ -78,7 +72,6 @@ void testpoint(struct d_complex c){
          if ((z.r*z.r+z.i*z.i)>4.0) {
         #pragma omp atomic
            numoutside++;
-
            break;
          }
        }
