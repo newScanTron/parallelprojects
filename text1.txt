@@ -1,0 +1,2 @@
+this is text for the first thing
+second line of first file.

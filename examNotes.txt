@@ -1,0 +1,5 @@
+openMP questions
+basic parallel ideas
+single sheet of notes allowed
+first cuda video will be covered.
+know what all openMP commands do.
