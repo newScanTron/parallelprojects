@@ -166,14 +166,18 @@ for (unsigned  int i = 0; i < 32; i ++)
      checkCudaErrors(cudaMemcpy(&h_bins, d_bins, histo_size, cudaMemcpyDeviceToHost));
      printf("0: %d, 1: %d, %d %d %d \n", h_bins[0], h_bins[1], h_bins[0]+h_bins[1], numElems, (one<<i));
 
-     radix_sort<<<histo_block_dim, thread_dim>>>(d_inputVals, d_scanned);
-        cudaDeviceSynchronize(); checkCudaErrors(cudaGetLastError());
+
 
 }
 
+radix_sort<<<dim3(1), thread_dim>>>(d_inputVals);
+   cudaDeviceSynchronize(); checkCudaErrors(cudaGetLastError());
+   checkCudaErrors(cudaMemcpy(&h_arr, d_inputVals, input_size, cudaMemcpyDeviceToHost));
 
-
-
+for (int c = 0; c < 50; c ++)
+{
+  printf("sorted? %d", h_arr[c]);
+}
 
 
 }

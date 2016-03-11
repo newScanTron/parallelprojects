@@ -37,97 +37,99 @@
    sorted results end up in the output buffer!  Hint: You may need to do a copy
    at the end.
  */
-
+//fairly straight forward kernel that is called once for all 32 bits of
+//a unsigned int collecting the number of 1 and 0s.
 __global__
-void histogram_kernel(unsigned int pass,
+void get_histogram(unsigned int iter_num,
                       unsigned int * d_bins,
                       unsigned int* const d_input,
                       const int size) {
-    int mid = threadIdx.x + blockDim.x * blockIdx.x;
+    int mid = threadIdx.x + (blockDim.x * blockIdx.x);
     if(mid >= size)
         return;
     unsigned int one = 1;
-    int bin = ((d_input[mid] & (one<<pass)) == (one<<pass)) ? 1 : 0;
+    int bin = ((d_input[mid] & (one<<iter_num)) == (one<<iter_num)) ? 1 : 0;
     if(bin)
          atomicAdd(&d_bins[1], 1);
     else
          atomicAdd(&d_bins[0], 1);
 }
 
-// we will run 1 exclusive scan, but then when we
-// do the move, for zero vals, we iwll take mid - val of scan there
+//this exclusive scan is based on the example http://http.developer.nvidia.com/GPUGems3/gpugems3_ch39.html
+//it will only work on one block of threads working on a singel SM.
+//the look up into d_inputVals on line 72 would case race conditions
+//when we went to look up the last element of the previous block.
 __global__
-void exclusive_scan_kernel(unsigned int pass,
+void exclusive_scan(unsigned int iter_num,
                     unsigned int const * d_inputVals,
                     unsigned int * d_output,
                     const int size,
-                    unsigned int base,
-                    unsigned int threadSize) {
-    int main_id = threadIdx.x + threadSize * base;
-
+                    unsigned int base) {
+    int main_id = threadIdx.x + blockDim.x * base;
+//make sure we are in the image and if main_id is zero just set val = 0;
     if(main_id >= size)
         return;
-      unsigned int val = 0;
+    //this is the meat of the scan checking the bits at the location of the
+    //main_id-1 then setting the d_output[main_id] to that
+    unsigned int val = 0;
     if(main_id > 0)
-        val = ((d_inputVals[main_id-1] & (1u<<pass))  == (1u<<pass)) ? 1 : 0;
+        val = ((d_inputVals[main_id-1] & (1u<<iter_num))  == (1u<<iter_num)) ? 1 : 0;
     else
         val = 0;
-
+    //write to the global array then sync the threads on the one block we are
+    //working with
     d_output[main_id] = val;
-
     __syncthreads();
 
-    for(int s = 1; s <= threadSize; s *= 2) {
+    for(int s = 1; s <= blockDim.x ; s *= 2)
+    {
         int spot = main_id - s;
-
-        if(spot >= 0 && spot >=  threadSize*base)
+//syncthreads is needed here because we are reading from and writing to d_output
+//atomicAdd would be better for the second but seems not to be implemented for
+//usigned int.
+        if(spot >= 0 && spot >=  blockDim.x *base)
              val = d_output[spot];
         __syncthreads();
-        if(spot >= 0 && spot >= threadSize*base)
+        if(spot >= 0 && spot >= blockDim.x *base)
             d_output[main_id] += val;
         __syncthreads();
     }
     if(base > 0)
-        d_output[main_id] += d_output[base*threadSize - 1];
+    //don't actually need this atomicAdd because this kernel
+    //will only run on one block of theads at a time i was trying to
+    //make it
+        atomicAdd(&d_output[main_id] , d_output[base*blockDim.x  - 1]);
 
 }
 
 __global__
-void move_kernel(
+void combine(
     unsigned int iter_num,
     unsigned int* const d_inputVals,
     unsigned int* const d_inputPos,
     unsigned int* d_outputVals,
     unsigned int* d_outputPos,
-    unsigned int* d_outputMove,
     unsigned int* const d_scanned,
-    unsigned int  one_pos,
+    unsigned int  ones_pos,
     const size_t numElems) {
-
+//standard geting of main_id based on blcok and thread ids
     int main_id = threadIdx.x + blockDim.x * blockIdx.x;
     if(main_id >= numElems)
         return;
-
-    unsigned int scan=0;
+    //
+    unsigned int index=0;
     unsigned int base=0;
-    if( ( d_inputVals[main_id] & (1u<<iter_num)) == (1u<<iter_num)) {
-        scan = d_scanned[main_id];
-        base = one_pos;
+    if( ( d_inputVals[main_id] & (1u<<iter_num)) == (1u<<iter_num))
+    {
+        index = d_scanned[main_id];
+        base = ones_pos;
     } else {
-        scan = (main_id) - d_scanned[main_id];
+        index = (main_id) - d_scanned[main_id];
     }
 
-    d_outputMove[main_id] = base+scan;
-    d_outputPos[base+scan]  = d_inputPos[main_id];//d_inputPos[0];
-    d_outputVals[base+scan] = d_inputVals[main_id];//base+scan;//d_inputVals[0];
+    d_outputPos[base+index]  = d_inputPos[main_id];
+    d_outputVals[base+index] = d_inputVals[main_id];
 
-}
-
-
-
-
-int get_max_size(int n, int d) {
-    return (int)ceil( (float)n/(float)d ) + 1;
 }
 
 void your_sort(unsigned int* const d_inputVals,
@@ -136,75 +138,65 @@ void your_sort(unsigned int* const d_inputVals,
                unsigned int* const d_outputPos,
                const size_t numElems)
 {
-
+    //alocate space for the needed histogram arrays
     unsigned int* d_bins;
     unsigned int  h_bins[2];
+    //an array for the combine kernel to use
     unsigned int* d_scanned;
-    unsigned int* d_moved;
+    //size constents for allocation
     const size_t histo_size = sizeof(unsigned int) * 2;
     const size_t input_size   = sizeof(unsigned int) * numElems;
 
     checkCudaErrors(cudaMalloc(&d_bins, histo_size));
     checkCudaErrors(cudaMalloc(&d_scanned, input_size));
-    checkCudaErrors(cudaMalloc(&d_moved, input_size));
-    // just keep thread dim at 1024
+    //Set thread and block size based on the number of threads
     int THREADS = 1024;
     //make blocks so we are evenly distrubuting the threads
     int BLOCK = (int)ceil(numElems/THREADS)+1;
-    //(int)ceil( (float)n/(float)d ) + 1;
-    printf("BLOCK size: %d\n", BLOCK);
     dim3 thread_dim(THREADS);
     dim3 histo_block_dim(BLOCK);
-    for(unsigned int pass = 0; pass < 32; pass++) {
-        unsigned int one = 1;
-//set each array to 0 to make sure we are dealing with fresh data.
+    for(unsigned int iter_num = 0; iter_num < 32; iter_num++) {
+        //set each array to 0 to make sure we are dealing with fresh data.
         checkCudaErrors(cudaMemset(d_bins, 0, histo_size));
         checkCudaErrors(cudaMemset(d_scanned, 0, input_size));
         checkCudaErrors(cudaMemset(d_outputVals, 0, input_size));
         checkCudaErrors(cudaMemset(d_outputPos, 0, input_size));
-
-        histogram_kernel<<<histo_block_dim, thread_dim>>>(pass, d_bins, d_inputVals, numElems);
+        //make the histogram of bits
+        get_histogram<<<histo_block_dim, thread_dim>>>(iter_num, d_bins, d_inputVals, numElems);
         cudaDeviceSynchronize(); checkCudaErrors(cudaGetLastError());
-
         // copy the histogram data to host
         checkCudaErrors(cudaMemcpy(&h_bins, d_bins, histo_size, cudaMemcpyDeviceToHost));
-
-        printf("0: %d, 1: %d, %d %d %d \n", h_bins[0], h_bins[1], h_bins[0]+h_bins[1], numElems, (one<<pass));
-
-        // now we have 0, and 1 start position..
-        // get the scan of 1's
-
-        for(int i = 0; i < get_max_size(numElems, thread_dim.x); i++) {
-            exclusive_scan_kernel<<<dim3(1), thread_dim>>>(
-                   pass,
+        //I tried to do something better here but was unable, so
+        //iterating over one block at a time it is
+        for(int i = 0; i < BLOCK; i++) {
+            exclusive_scan<<<dim3(1), thread_dim>>>(
+                   iter_num,
                    d_inputVals,
                    d_scanned,
                    numElems,
-                   i,
-                   thread_dim.x
+                   i
             );
             cudaDeviceSynchronize(); checkCudaErrors(cudaGetLastError());
+
         }
-        // calculate the move positions
-        move_kernel<<<histo_block_dim, thread_dim>>>(
-            pass,
+        // calculate the move positions based on histogram and scaned
+        combine<<<histo_block_dim, thread_dim>>>(
+            iter_num,
             d_inputVals,
             d_inputPos,
             d_outputVals,
             d_outputPos,
-            d_moved,
             d_scanned,
             h_bins[0],
             numElems
         );
         cudaDeviceSynchronize(); checkCudaErrors(cudaGetLastError());
-        //finall
-         // copy the histogram data to input
+        //finally copy the the output data to the input data
         checkCudaErrors(cudaMemcpy(d_inputVals, d_outputVals, input_size, cudaMemcpyDeviceToDevice));
         checkCudaErrors(cudaMemcpy(d_inputPos, d_outputPos, input_size, cudaMemcpyDeviceToDevice));
         cudaDeviceSynchronize(); checkCudaErrors(cudaGetLastError());
     }
-    checkCudaErrors(cudaFree(d_moved));
+    //free the stuff whe cudaMalloced
     checkCudaErrors(cudaFree(d_scanned));
     checkCudaErrors(cudaFree(d_bins));
 }
