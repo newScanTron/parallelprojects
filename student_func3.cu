@@ -65,26 +65,23 @@
 #include <stdio.h>
 
 #include "utils.h"
-
+int THREADS = 1024;
+int BLOCKS;
 __global__
 void histogram_kernel(unsigned int* d_bins, const float* d_in, const int bin_count, const float lum_min, const float lum_max, const int size)
 {
-    int main_id = threadIdx.x + blockDim.x * blockIdx.x;
-    if(main_id >= size)
-        return;
-    float lum_range = lum_max - lum_min;
-    int bin = ((d_in[main_id]-lum_min) / lum_range) * bin_count;
 
-    atomicAdd(&d_bins[bin], 1);
-}
+
 
 __global__
-void scan_kernel(unsigned int* d_bins, int size)
+void scan_kernel( unsigned int* d_bins, int size)
 {
+    extern __shared__ unsigned int shared_bin[];
     int main_id = threadIdx.x + blockDim.x * blockIdx.x;
     if(main_id >= size)
         return;
-
+    else
+        shared_bin[main_id] = d_bins[main_id];
     for(int s = 1; s <= size; s *= 2) {
           int spot = main_id - s;
 
@@ -97,6 +94,10 @@ void scan_kernel(unsigned int* d_bins, int size)
           __syncthreads();
 
     }
+    // if (main_id < size)
+    // {
+    //   d_bins[main_id] = shared_bin[main_id];
+    // }
 }
 // calculate reduce max or min and stick the value in d_answer.
 __global__
@@ -145,7 +146,7 @@ void reduce_minmax_kernel(const float* const d_in, float* d_out, const size_t si
     }
 }
 
-int get_max_size(int n, int d) {
+int get_block_size(int n, int d) {
     return (int)ceil( (float)n/(float)d ) + 1;
 }
 
@@ -166,16 +167,15 @@ float reduce_minmax(const float* const d_in, const size_t size, int minmax) {
     const int shared_mem_size = sizeof(float)*BLOCK_SIZE;
 
     while(1) {
-        checkCudaErrors(cudaMalloc(&d_curr_out, sizeof(float) * get_max_size(curr_size, BLOCK_SIZE)));
+        checkCudaErrors(cudaMalloc(&d_curr_out, sizeof(float) * get_block_size(curr_size, BLOCK_SIZE)));
 
-        dim3 block_dim(get_max_size(size, BLOCK_SIZE));
+        dim3 block_dim(get_block_size(size, BLOCK_SIZE));
         reduce_minmax_kernel<<<block_dim, thread_dim, shared_mem_size>>>(
             d_curr_in,
             d_curr_out,
             curr_size,
             minmax
         );
-        printf("what");
         cudaDeviceSynchronize(); checkCudaErrors(cudaGetLastError());
 
 
@@ -184,9 +184,13 @@ float reduce_minmax(const float* const d_in, const size_t size, int minmax) {
         d_curr_in = d_curr_out;
 
         if(curr_size <  BLOCK_SIZE)
-            break;
+          {  break;
 
-        curr_size = get_max_size(curr_size, BLOCK_SIZE);
+
+
+}
+        curr_size = get_block_size(curr_size, BLOCK_SIZE);
+
     }
 
     // theoretically we should be
@@ -218,23 +222,19 @@ void your_histogram_and_prefixsum(const float* const d_logLuminance,
     checkCudaErrors(cudaMalloc(&d_bins, histo_size));
     checkCudaErrors(cudaMemset(d_bins, 0, histo_size));
     dim3 thread_dim(1024);
-    dim3 hist_block_dim(get_max_size(size, thread_dim.x));
+    dim3 hist_block_dim(get_block_size(size, thread_dim.x));
     histogram_kernel<<<hist_block_dim, thread_dim>>>(d_bins, d_logLuminance, numBins, min_logLum, max_logLum, size);
     cudaDeviceSynchronize(); checkCudaErrors(cudaGetLastError());
 
     unsigned int h_out[100];
     cudaMemcpy(&h_out, d_bins, sizeof(unsigned int)*100, cudaMemcpyDeviceToHost);
-    for(int i = 0; i < 100; i++)
-        printf("hist out %d\n", h_out[i]);
 
-    dim3 scan_block_dim(get_max_size(numBins, thread_dim.x));
+    dim3 scan_block_dim(get_block_size(numBins, thread_dim.x));
 
-    scan_kernel<<<scan_block_dim, thread_dim>>>(d_bins, numBins);
+    scan_kernel<<<scan_block_dim, thread_dim, (sizeof(unsigned int)*numBins)>>>(d_bins, numBins);
     cudaDeviceSynchronize(); checkCudaErrors(cudaGetLastError());
 
     cudaMemcpy(&h_out, d_bins, sizeof(unsigned int)*100, cudaMemcpyDeviceToHost);
-    for(int i = 0; i < 100; i++)
-        printf("cdf out %d\n", h_out[i]);
 
 
     cudaMemcpy(d_cdf, d_bins, histo_size, cudaMemcpyDeviceToDevice);

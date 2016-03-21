@@ -1,0 +1,12 @@
+parallel alg. does m opts in time t (t steps, theoretically)
+On p processors, how many steps are required (t sub p)
+let n sub i = # of operations at step i
+time for step i : ceil(ni/p)
+overall time : sum of ceil(ni/p) from i = 0 to t <= (ni +p-1)/p
+= sum of i 1 to t ((ni-1)/p+p/p) = t + sum (ni-1)/p
+overall time = t + (m-t)/p ~= t + m/p;
+
+
+3/17 notes
+
+ranking complexity of both O(n) 
