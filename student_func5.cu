@@ -63,11 +63,9 @@ void computeHistogram(const unsigned int* const d_vals, //INPUT
                       const unsigned int numBins,
                       const unsigned int numElems)
 {
-int THREADS = 1024;
-  int BLOCKS =  (int)ceil( (float)numElems/(float)THREADS);
-  printf("Blocks: %d\n", BLOCKS);
+  int THREADS = 1024;
   dim3 thread_dim(THREADS);
-  dim3 block_dim(BLOCKS);
+
 
   const unsigned int shared_mem_size = sizeof(unsigned int) * numBins;
 
@@ -76,7 +74,7 @@ int THREADS = 1024;
 //  checkCudaErrors( cudaGetDeviceProperties( &prop, 0 ) );
 //  int blocks = prop.multiProcessorCount;
 //  std::cout << blocks << std::endl;
-
+//the above code is how i determined what number to double for the number of blocks
   dim3 other_block_dim(14*2);
     //TODO Launch the yourHisto kernel
     yourHisto<<<other_block_dim, thread_dim>>>(d_vals, d_histo, numElems);
