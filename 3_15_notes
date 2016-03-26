@@ -9,4 +9,9 @@ overall time = t + (m-t)/p ~= t + m/p;
 
 3/17 notes
 
-ranking complexity of both O(n) 
+ranking complexity of both O(n)
+
+3/22 notes
+
+to change something to from scatter to gather almost always requires preprocessing
+and will depend on the data if its worth your while.  
