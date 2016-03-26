@@ -67,7 +67,9 @@
 #include "utils.h"
 #include <thrust/host_vector.h>
 #include "reference_calc.cpp"
-
+#include <float.h>
+#include <math.h>
+#include <stdio.h>
 //pre-compute the values of g, which depend only the source image
 //and aren't iteration dependent.
 void compute_G(const unsigned char* const channel,
@@ -86,6 +88,16 @@ void compute_G(const unsigned char* const channel,
 
     g[offset] = sum;
   }
+}
+
+__global__
+void getMask(unsigned char * d_mask,
+             unsigned char * d_borderPixels,
+             unsigned char * d_strictInteriorPixels,
+             uchar4 * d_sourceImg
+             )
+{
+      int main_id = threadIdx.x + blockDim.x * blockIdx.x;
 }
 
 //Performs one iteration of the solver
@@ -154,9 +166,29 @@ void your_blend(const uchar4* const h_sourceImg,  //IN
                 const uchar4* const h_destImg, //IN
                 uchar4* const h_blendedImg) //OUT
 {
+
+
+
 //  uchar4 * h_reference = new uchar4[numRowsSource*numColsSource];
 size_t srcSize = numRowsSource * numColsSource;
 unsigned char* mask = new unsigned char[srcSize];
+
+//cudaMalloc all a mask array and aray of boarder and interior items
+unsigned char * d_mask;
+unsigned char * d_borderPixels;
+unsigned char * d_strictInteriorPixels;
+const uchar4 * d_sourceImg;
+uchar4 * d_destImg;
+uchar4 * d_blendedImg;
+checkCudaErrors(cudaMalloc(&d_mask, srcSize * sizeof(unsigned char)));
+checkCudaErrors(cudaMalloc(&d_borderPixels, srcSize * sizeof(unsigned char)));
+checkCudaErrors(cudaMalloc(&d_strictInteriorPixels, srcSize * sizeof(unsigned char)));
+checkCudaErrors(cudaMalloc(&d_sourceImg, srcSize * sizeof(uchar4)));
+checkCudaErrors(cudaMalloc(&d_destImg, srcSize * sizeof(uchar4)));
+checkCudaErrors(cudaMalloc(&d_blendedImg, srcSize * sizeof(uchar4)));
+
+checkCudaErrors(cudaMemcpy(&d_sourceImg, h_sourceImg, sizeof(unsigned char)* srcSize, cudaMemcpyHostToDevice));
+
 
 for (int i = 0; i < srcSize; ++i) {
   mask[i] = (h_sourceImg[i].x + h_sourceImg[i].y + h_sourceImg[i].z < 3 * 255) ? 1 : 0;
