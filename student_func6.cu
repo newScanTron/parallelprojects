@@ -89,15 +89,58 @@ void compute_G(const unsigned char* const channel,
     g[offset] = sum;
   }
 }
-
+__device__
+bool isMasked(uchar4 val) {
+	return (val.x < 255 || val.y < 255 || val.z < 255);
+}
 __global__
 void getMask(unsigned char * d_mask,
              unsigned char * d_borderPixels,
              unsigned char * d_strictInteriorPixels,
-             uchar4 * d_sourceImg
+             uchar4 * d_sourceImg,
+            const size_t numCols,
+            const size_t numRows
              )
 {
-      int main_id = threadIdx.x + blockDim.x * blockIdx.x;
+      const size_t srcSize = numCols * numRows;
+      int main_x = threadIdx.x + blockDim.x * blockIdx.x;
+      int main_y = threadIdx.y + blockDim.y * blockIdx.y;
+      int main_id = main_x + main_y * numCols;
+      int right = (main_x + 1) + main_y * numCols;
+      int left = (main_x - 1) + main_y * numCols;
+      int up = main_x + (main_y + 1) * numCols;
+      int down = main_x + (main_y - 1) * numCols;
+
+      if (main_id >= srcSize)
+      {
+  return;
+      }
+else {
+   d_mask[main_id] = (d_sourceImg[main_id].x + d_sourceImg[main_id].y + d_sourceImg[main_id].z < 3 * 255) ? 1 : 0;
+
+}
+    //  __syncthreads();
+      //now we need to check the four pixels north south east west to see if they are in the mask or Not
+      if (isMasked(d_sourceImg[main_id]))
+      {
+        int isInside = 0;
+        if (isMasked(d_sourceImg[left]))
+          isInside++;
+        if (isMasked(d_sourceImg[up]))
+          isInside++;
+        if (isMasked(d_sourceImg[right]))
+          isInside++;
+        if (isMasked(d_sourceImg[down]))
+          isInside++;
+
+        if (isInside == 4)
+        {
+          d_strictInteriorPixels[main_id] = 1;
+        } else if (isInside > 0)
+        {
+          d_borderPixels[main_id] = 1;
+        }
+      }
 }
 
 //Performs one iteration of the solver
@@ -177,21 +220,51 @@ unsigned char* mask = new unsigned char[srcSize];
 unsigned char * d_mask;
 unsigned char * d_borderPixels;
 unsigned char * d_strictInteriorPixels;
-const uchar4 * d_sourceImg;
+
+//some test host variables
+unsigned char  test_mask[srcSize];
+unsigned char test_strinct_interior[srcSize];
+unsigned char test_borderpixel[srcSize];
+
+uchar4 * d_sourceImg;
 uchar4 * d_destImg;
 uchar4 * d_blendedImg;
 checkCudaErrors(cudaMalloc(&d_mask, srcSize * sizeof(unsigned char)));
 checkCudaErrors(cudaMalloc(&d_borderPixels, srcSize * sizeof(unsigned char)));
 checkCudaErrors(cudaMalloc(&d_strictInteriorPixels, srcSize * sizeof(unsigned char)));
+checkCudaErrors(cudaMemset(d_borderPixels, 0, srcSize * sizeof(unsigned char)));
+checkCudaErrors(cudaMemset(d_strictInteriorPixels, 0, srcSize * sizeof(unsigned char)));
 checkCudaErrors(cudaMalloc(&d_sourceImg, srcSize * sizeof(uchar4)));
 checkCudaErrors(cudaMalloc(&d_destImg, srcSize * sizeof(uchar4)));
 checkCudaErrors(cudaMalloc(&d_blendedImg, srcSize * sizeof(uchar4)));
 
-checkCudaErrors(cudaMemcpy(&d_sourceImg, h_sourceImg, sizeof(unsigned char)* srcSize, cudaMemcpyHostToDevice));
+checkCudaErrors(cudaMemcpy(d_sourceImg, h_sourceImg, (sizeof(uchar4) * srcSize), cudaMemcpyHostToDevice));
+int BLOCKS = 32;
 
-
+dim3 block_dim(BLOCKS, BLOCKS);
+dim3 thread_dim(ceil(numColsSource/block_dim.x)+1, ceil(numRowsSource/block_dim.y)+1);
+getMask<<<block_dim, thread_dim>>>(d_mask, d_borderPixels, d_strictInteriorPixels, d_sourceImg, numColsSource, numRowsSource);
+    cudaDeviceSynchronize(); checkCudaErrors(cudaGetLastError());
+/*
+TODO testing memcpy
+*/
+size_t cpySize = sizeof(unsigned char) * srcSize;
+checkCudaErrors(cudaMemcpy(&test_mask, d_mask, cpySize, cudaMemcpyDeviceToHost));
+checkCudaErrors(cudaMemcpy(&test_borderpixel, d_borderPixels, cpySize, cudaMemcpyDeviceToHost));
+checkCudaErrors(cudaMemcpy(&test_strinct_interior, d_strictInteriorPixels, cpySize, cudaMemcpyDeviceToHost));
+//serial get mask for loop
 for (int i = 0; i < srcSize; ++i) {
   mask[i] = (h_sourceImg[i].x + h_sourceImg[i].y + h_sourceImg[i].z < 3 * 255) ? 1 : 0;
+}
+
+/*
+TODO test if mask[]s are the same
+*/
+for (int i = 0; i < srcSize; ++i) {
+ if (mask[i] != test_mask[i])
+ {
+   std::cout << "not same" << std::endl;
+ }
 }
 
 //next compute strictly interior pixels and border pixels
@@ -223,6 +296,24 @@ for (size_t r = 1; r < numRowsSource - 1; ++r) {
     }
   }
 }
+
+/*TODO more testing loops*/
+for (int i = 0; i < srcSize; ++i) {
+
+  if (borderPixels[i] != test_borderpixel[i])
+  {
+    std::cout << "not same boarderPixel" << std::endl;
+  }
+  if (strictInteriorPixels[i] != test_strinct_interior[i])
+  {
+    std::cout << "they: "<< strictInteriorPixels[i] << "yiou: " << test_strinct_interior[i] << std::endl;
+  }
+  }
+  for (int i = 0; i < srcSize; ++i) {
+
+
+
+    }
 
 //split the source and destination images into their respective
 //channels
