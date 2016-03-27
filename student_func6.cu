@@ -156,6 +156,7 @@ void findBorderPixels(unsigned char * d_mask,
 
 __global__
 void seperateRGB( uchar4 * d_sourceImg,
+                  uchar4 * d_destImg,
                   unsigned char * red_src,
                   unsigned char* blue_src,
                   unsigned char* green_src,
@@ -171,9 +172,9 @@ void seperateRGB( uchar4 * d_sourceImg,
   red_src[main_id]   = d_sourceImg[main_id].x;
   blue_src[main_id]  = d_sourceImg[main_id].y;
   green_src[main_id] = d_sourceImg[main_id].z;
-  red_dst[main_id]   = h_destImg[main_id].x;
-  blue_dst[main_id]  = h_destImg[main_id].y;
-  green_dst[main_id] = h_destImg[main_id].z;
+  red_dst[main_id]   = d_destImg[main_id].x;
+  blue_dst[main_id]  = d_destImg[main_id].y;
+  green_dst[main_id] = d_destImg[main_id].z;
 
 }
 //Performs one iteration of the solver
@@ -270,6 +271,7 @@ checkCudaErrors(cudaMalloc(&d_destImg, srcSize * sizeof(uchar4)));
 checkCudaErrors(cudaMalloc(&d_blendedImg, srcSize * sizeof(uchar4)));
 
 checkCudaErrors(cudaMemcpy(d_sourceImg, h_sourceImg, (sizeof(uchar4) * srcSize), cudaMemcpyHostToDevice));
+checkCudaErrors(cudaMemcpy(d_destImg, h_destImg, (sizeof(uchar4) * srcSize), cudaMemcpyHostToDevice));
 int BLOCKS = 32;
 
 dim3 block_dim(BLOCKS, BLOCKS);
@@ -283,7 +285,7 @@ size_t cpySize = sizeof(unsigned char) * srcSize;
 checkCudaErrors(cudaMemcpy(&test_mask, d_mask, cpySize, cudaMemcpyDeviceToHost));
 
 findBorderPixels<<<block_dim, thread_dim>>>(d_mask, d_borderPixels, d_strictInteriorPixels, numColsSource, numRowsSource);
-
+cudaDeviceSynchronize(); checkCudaErrors(cudaGetLastError());
 checkCudaErrors(cudaMemcpy(&test_borderpixel, d_borderPixels, cpySize, cudaMemcpyDeviceToHost));
 checkCudaErrors(cudaMemcpy(&test_strinct_interior, d_strictInteriorPixels, cpySize, cudaMemcpyDeviceToHost));
 
@@ -307,12 +309,12 @@ for (size_t r = 1; r < numRowsSource - 1; ++r) {
 //serial get mask for loop
 //split the source and destination images into their respective
 //channels
-unsigned char* t_red_src[srcSize];
-unsigned char* t_blue_src[srcSize];
-unsigned char* t_green_src[srcSize];
-unsigned char* t_red_dst[srcSize];
-unsigned char* t_blue_dst[srcSize];
-unsigned char* t_green_dst[srcSize];
+unsigned char t_red_src[srcSize];
+unsigned char t_blue_src[srcSize];
+unsigned char t_green_src[srcSize];
+unsigned char t_red_dst[srcSize];
+unsigned char t_blue_dst[srcSize];
+unsigned char t_green_dst[srcSize];
 
 unsigned char* d_red_src;
 unsigned char* d_blue_src;
@@ -327,20 +329,39 @@ checkCudaErrors(cudaMalloc(&d_red_dst, srcSize * sizeof(unsigned char)));
 checkCudaErrors(cudaMalloc(&d_blue_dst, srcSize * sizeof(unsigned char)));
 checkCudaErrors(cudaMalloc(&d_green_dst, srcSize * sizeof(unsigned char)));
 
-unsigned char* red_src   = new unsigned char[srcSize];
-unsigned char* blue_src  = new unsigned char[srcSize];
-unsigned char* green_src = new unsigned char[srcSize];
-unsigned char* red_dst   = new unsigned char[srcSize];
-unsigned char* blue_dst  = new unsigned char[srcSize];
-unsigned char* green_dst = new unsigned char[srcSize];
-for (int i = 0; i < srcSize; ++i) {
-  red_src[i]   = h_sourceImg[i].x;
-  blue_src[i]  = h_sourceImg[i].y;
-  green_src[i] = h_sourceImg[i].z;
-  red_dst[i]   = h_destImg[i].x;
-  blue_dst[i]  = h_destImg[i].y;
-  green_dst[i] = h_destImg[i].z;
-}
+seperateRGB<<<block_dim, thread_dim>>>(d_sourceImg, d_destImg, d_red_src, d_blue_src, d_green_src, d_red_dst, d_blue_dst, d_green_dst, numColsSource, numRowsSource);
+cudaDeviceSynchronize(); checkCudaErrors(cudaGetLastError());
+checkCudaErrors(cudaMemcpy(&t_red_src, d_red_src, cpySize, cudaMemcpyDeviceToHost));
+checkCudaErrors(cudaMemcpy(&t_blue_src, d_blue_src, cpySize, cudaMemcpyDeviceToHost));
+checkCudaErrors(cudaMemcpy(&t_green_src, d_green_src, cpySize, cudaMemcpyDeviceToHost));
+checkCudaErrors(cudaMemcpy(&t_red_dst, d_red_dst, cpySize, cudaMemcpyDeviceToHost));
+checkCudaErrors(cudaMemcpy(&t_blue_dst, d_blue_dst, cpySize, cudaMemcpyDeviceToHost));
+checkCudaErrors(cudaMemcpy(&t_green_dst, d_green_dst, cpySize, cudaMemcpyDeviceToHost));
+
+// unsigned char* red_src   = new unsigned char[srcSize];
+// unsigned char* blue_src  = new unsigned char[srcSize];
+// unsigned char* green_src = new unsigned char[srcSize];
+// unsigned char* red_dst   = new unsigned char[srcSize];
+// unsigned char* blue_dst  = new unsigned char[srcSize];
+// unsigned char* green_dst = new unsigned char[srcSize];
+// for (int i = 0; i < srcSize; ++i) {
+//   // red_src[i]   = h_sourceImg[i].x;
+//   // blue_src[i]  = h_sourceImg[i].y;
+//   // green_src[i] = h_sourceImg[i].z;
+//   red_dst[i]   = h_destImg[i].x;
+//   blue_dst[i]  = h_destImg[i].y;
+//   green_dst[i] = h_destImg[i].z;
+// }
+checkCudaErrors(cudaMemcpy(&t_red_dst, d_red_dst, cpySize, cudaMemcpyDeviceToHost));
+checkCudaErrors(cudaMemcpy(&t_blue_dst, d_blue_dst, cpySize, cudaMemcpyDeviceToHost));
+checkCudaErrors(cudaMemcpy(&t_green_dst, d_green_dst, cpySize, cudaMemcpyDeviceToHost));
+// for (int i = 0; i < srcSize; ++i) {
+//  if (red_dst[i] != t_red_dst[i])
+//  {
+//    std::cout << "not red_dst" << std::endl;
+//  }
+// }
+
 
 //next we'll precompute the g term - it never changes, no need to recompute every iteration
 float *g_red   = new float[srcSize];
@@ -351,9 +372,9 @@ memset(g_red,   0, srcSize * sizeof(float));
 memset(g_blue,  0, srcSize * sizeof(float));
 memset(g_green, 0, srcSize * sizeof(float));
 
-compute_G(red_src,   g_red,   numColsSource, interiorPixelList);
-compute_G(blue_src,  g_blue,  numColsSource, interiorPixelList);
-compute_G(green_src, g_green, numColsSource, interiorPixelList);
+compute_G(t_red_src,   g_red,   numColsSource, interiorPixelList);
+compute_G(t_blue_src,  g_blue,  numColsSource, interiorPixelList);
+compute_G(t_green_src, g_green, numColsSource, interiorPixelList);
 
 //for each color channel we'll need two buffers and we'll ping-pong between them
 float *blendedValsRed_1 = new float[srcSize];
@@ -367,18 +388,18 @@ float *blendedValsGreen_2 = new float[srcSize];
 
 //IC is the source image, copy over
 for (size_t i = 0; i < srcSize; ++i) {
-  blendedValsRed_1[i] = red_src[i];
-  blendedValsRed_2[i] = red_src[i];
-  blendedValsBlue_1[i] = blue_src[i];
-  blendedValsBlue_2[i] = blue_src[i];
-  blendedValsGreen_1[i] = green_src[i];
-  blendedValsGreen_2[i] = green_src[i];
+  blendedValsRed_1[i] = t_red_src[i];
+  blendedValsRed_2[i] = t_red_src[i];
+  blendedValsBlue_1[i] = t_blue_src[i];
+  blendedValsBlue_2[i] = t_blue_src[i];
+  blendedValsGreen_1[i] = t_green_src[i];
+  blendedValsGreen_2[i] = t_green_src[i];
 }
 
 //Perform the solve on each color channel
 const size_t numIterations = 800;
 for (size_t i = 0; i < numIterations; ++i) {
-  compute_Iteration(red_dst, test_strinct_interior, test_borderpixel,
+  compute_Iteration(t_red_dst, test_strinct_interior, test_borderpixel,
                    interiorPixelList, numColsSource, blendedValsRed_1, g_red,
                    blendedValsRed_2);
 
@@ -386,7 +407,7 @@ for (size_t i = 0; i < numIterations; ++i) {
 }
 
 for (size_t i = 0; i < numIterations; ++i) {
-  compute_Iteration(blue_dst, test_strinct_interior, test_borderpixel,
+  compute_Iteration(t_blue_dst, test_strinct_interior, test_borderpixel,
                    interiorPixelList, numColsSource, blendedValsBlue_1, g_blue,
                    blendedValsBlue_2);
 
@@ -394,7 +415,7 @@ for (size_t i = 0; i < numIterations; ++i) {
 }
 
 for (size_t i = 0; i < numIterations; ++i) {
-  compute_Iteration(green_dst, test_strinct_interior, test_borderpixel,
+  compute_Iteration(t_green_dst, test_strinct_interior, test_borderpixel,
                    interiorPixelList, numColsSource, blendedValsGreen_1, g_green,
                    blendedValsGreen_2);
 
@@ -428,12 +449,12 @@ delete[] blendedValsGreen_2;
 delete[] g_red;
 delete[] g_blue;
 delete[] g_green;
-delete[] red_src;
-delete[] red_dst;
-delete[] blue_src;
-delete[] blue_dst;
-delete[] green_src;
-delete[] green_dst;
+// delete[] red_src;
+// delete[] red_dst;
+// delete[] blue_src;
+// delete[] blue_dst;
+// delete[] green_src;
+// delete[] green_dst;
 
 
 //checkResultsEps((unsigned char *)h_reference, (unsigned char *)h_blendedImg, 4 * numRowsSource * numColsSource, 2, .01);
