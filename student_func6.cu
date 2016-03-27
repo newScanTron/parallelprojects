@@ -95,8 +95,6 @@ bool isMasked(uchar4 val) {
 }
 __global__
 void getMask(unsigned char * d_mask,
-             unsigned char * d_borderPixels,
-             unsigned char * d_strictInteriorPixels,
              uchar4 * d_sourceImg,
             const size_t numCols,
             const size_t numRows
@@ -106,43 +104,78 @@ void getMask(unsigned char * d_mask,
       int main_x = threadIdx.x + blockDim.x * blockIdx.x;
       int main_y = threadIdx.y + blockDim.y * blockIdx.y;
       int main_id = main_x + main_y * numCols;
-      int right = (main_x + 1) + main_y * numCols;
-      int left = (main_x - 1) + main_y * numCols;
-      int up = main_x + (main_y + 1) * numCols;
-      int down = main_x + (main_y - 1) * numCols;
+
 
       if (main_id >= srcSize)
-      {
-  return;
-      }
-else {
-   d_mask[main_id] = (d_sourceImg[main_id].x + d_sourceImg[main_id].y + d_sourceImg[main_id].z < 3 * 255) ? 1 : 0;
+          return;
+       d_mask[main_id] = (d_sourceImg[main_id].x + d_sourceImg[main_id].y + d_sourceImg[main_id].z < 3 * 255) ? 1 : 0;
+
+
 
 }
-    //  __syncthreads();
-      //now we need to check the four pixels north south east west to see if they are in the mask or Not
-      if (isMasked(d_sourceImg[main_id]))
-      {
-        int isInside = 0;
-        if (isMasked(d_sourceImg[left]))
-          isInside++;
-        if (isMasked(d_sourceImg[up]))
-          isInside++;
-        if (isMasked(d_sourceImg[right]))
-          isInside++;
-        if (isMasked(d_sourceImg[down]))
-          isInside++;
+__global__
+void findBorderPixels(unsigned char * d_mask,
+             unsigned char * d_borderPixels,
+             unsigned char * d_strictInteriorPixels,
+            const size_t numCols,
+            const size_t numRows)
+            {
+              const size_t srcSize = numCols * numRows;
+              int main_x = threadIdx.x + blockDim.x * blockIdx.x;
+              int main_y = threadIdx.y + blockDim.y * blockIdx.y;
+              int main_id = main_x + main_y * numCols;
+              int right = (main_x + 1) + main_y * numCols;
+              int left = (main_x - 1) + main_y * numCols;
+              int up = main_x + (main_y + 1) * numCols;
+              int down = main_x + (main_y - 1) * numCols;
 
-        if (isInside == 4)
-        {
-          d_strictInteriorPixels[main_id] = 1;
-        } else if (isInside > 0)
-        {
-          d_borderPixels[main_id] = 1;
-        }
-      }
+
+              //  __syncthreads();
+                //now we need to check the four pixels north south east west to see if they are in the mask or Not
+                if (d_mask[main_id] ==1)
+                {
+                  int isInside = 0;
+                  if (d_mask[left] ==1)
+                    isInside++;
+                  if (d_mask[right] ==1)
+                    isInside++;
+                  if (d_mask[up] ==1)
+                    isInside++;
+                  if (d_mask[down] ==1)
+                    isInside++;
+
+                  if (isInside == 4)
+                  {
+                    d_strictInteriorPixels[main_id] = 1;
+                  } else if (isInside > 0)
+                  {
+                    d_borderPixels[main_id] = 1;
+                  }
+                }
+            }
+
+__global__
+void seperateRGB( uchar4 * d_sourceImg,
+                  unsigned char * red_src,
+                  unsigned char* blue_src,
+                  unsigned char* green_src,
+                  unsigned char* red_dst,
+                  unsigned char* blue_dst,
+                  unsigned char* green_dst,
+                  const size_t numCols,
+                  const size_t numRows)
+{
+  int main_x = threadIdx.x + blockDim.x * blockIdx.x;
+  int main_y = threadIdx.y + blockDim.y * blockIdx.y;
+  int main_id = main_x + main_y * numCols;
+  red_src[main_id]   = d_sourceImg[main_id].x;
+  blue_src[main_id]  = d_sourceImg[main_id].y;
+  green_src[main_id] = d_sourceImg[main_id].z;
+  red_dst[main_id]   = h_destImg[main_id].x;
+  blue_dst[main_id]  = h_destImg[main_id].y;
+  green_dst[main_id] = h_destImg[main_id].z;
+
 }
-
 //Performs one iteration of the solver
 void compute_Iteration(const unsigned char* const dstImg,
                       const unsigned char* const strictInteriorPixels,
@@ -214,15 +247,13 @@ void your_blend(const uchar4* const h_sourceImg,  //IN
 
 //  uchar4 * h_reference = new uchar4[numRowsSource*numColsSource];
 size_t srcSize = numRowsSource * numColsSource;
-unsigned char* mask = new unsigned char[srcSize];
-
-//cudaMalloc all a mask array and aray of boarder and interior items
+//cuaMalloc all a mask array and aray of boarder and interior items
 unsigned char * d_mask;
 unsigned char * d_borderPixels;
 unsigned char * d_strictInteriorPixels;
 
 //some test host variables
-unsigned char  test_mask[srcSize];
+unsigned char test_mask[srcSize];
 unsigned char test_strinct_interior[srcSize];
 unsigned char test_borderpixel[srcSize];
 
@@ -243,95 +274,69 @@ int BLOCKS = 32;
 
 dim3 block_dim(BLOCKS, BLOCKS);
 dim3 thread_dim(ceil(numColsSource/block_dim.x)+1, ceil(numRowsSource/block_dim.y)+1);
-getMask<<<block_dim, thread_dim>>>(d_mask, d_borderPixels, d_strictInteriorPixels, d_sourceImg, numColsSource, numRowsSource);
-    cudaDeviceSynchronize(); checkCudaErrors(cudaGetLastError());
+getMask<<<block_dim, thread_dim>>>(d_mask,  d_sourceImg, numColsSource, numRowsSource);
+cudaDeviceSynchronize(); checkCudaErrors(cudaGetLastError());
 /*
 TODO testing memcpy
 */
 size_t cpySize = sizeof(unsigned char) * srcSize;
 checkCudaErrors(cudaMemcpy(&test_mask, d_mask, cpySize, cudaMemcpyDeviceToHost));
+
+findBorderPixels<<<block_dim, thread_dim>>>(d_mask, d_borderPixels, d_strictInteriorPixels, numColsSource, numRowsSource);
+
 checkCudaErrors(cudaMemcpy(&test_borderpixel, d_borderPixels, cpySize, cudaMemcpyDeviceToHost));
 checkCudaErrors(cudaMemcpy(&test_strinct_interior, d_strictInteriorPixels, cpySize, cudaMemcpyDeviceToHost));
-//serial get mask for loop
-for (int i = 0; i < srcSize; ++i) {
-  mask[i] = (h_sourceImg[i].x + h_sourceImg[i].y + h_sourceImg[i].z < 3 * 255) ? 1 : 0;
-}
 
-/*
-TODO test if mask[]s are the same
-*/
-for (int i = 0; i < srcSize; ++i) {
- if (mask[i] != test_mask[i])
- {
-   std::cout << "not same" << std::endl;
- }
-}
 
-//next compute strictly interior pixels and border pixels
-unsigned char *borderPixels = new unsigned char[srcSize];
-unsigned char *strictInteriorPixels = new unsigned char[srcSize];
 
+//this whole bit is still needed for a later part of the serial implemnintaion.
 std::vector<uint2> interiorPixelList;
-
 //the source region in the homework isn't near an image boundary, so we can
 //simplify the conditionals a little...
 for (size_t r = 1; r < numRowsSource - 1; ++r) {
   for (size_t c = 1; c < numColsSource - 1; ++c) {
-    if (mask[r * numColsSource + c]) {
-      if (mask[(r -1) * numColsSource + c] && mask[(r + 1) * numColsSource + c] &&
-          mask[r * numColsSource + c - 1] && mask[r * numColsSource + c + 1]) {
-        strictInteriorPixels[r * numColsSource + c] = 1;
-        borderPixels[r * numColsSource + c] = 0;
+    if (test_mask[r * numColsSource + c]) {
+      if (test_mask[(r -1) * numColsSource + c] && test_mask[(r + 1) * numColsSource + c] &&
+          test_mask[r * numColsSource + c - 1] && test_mask[r * numColsSource + c + 1]) {
         interiorPixelList.push_back(make_uint2(r, c));
-      }
-      else {
-        strictInteriorPixels[r * numColsSource + c] = 0;
-        borderPixels[r * numColsSource + c] = 1;
-      }
-    }
-    else {
-        strictInteriorPixels[r * numColsSource + c] = 0;
-        borderPixels[r * numColsSource + c] = 0;
-
-    }
   }
 }
 
-/*TODO more testing loops*/
-for (int i = 0; i < srcSize; ++i) {
+}}
 
-  if (borderPixels[i] != test_borderpixel[i])
-  {
-    std::cout << "not same boarderPixel" << std::endl;
-  }
-  if (strictInteriorPixels[i] != test_strinct_interior[i])
-  {
-    std::cout << "they: "<< strictInteriorPixels[i] << "yiou: " << test_strinct_interior[i] << std::endl;
-  }
-  }
-  for (int i = 0; i < srcSize; ++i) {
-
-
-
-    }
-
+//serial get mask for loop
 //split the source and destination images into their respective
 //channels
+unsigned char* t_red_src[srcSize];
+unsigned char* t_blue_src[srcSize];
+unsigned char* t_green_src[srcSize];
+unsigned char* t_red_dst[srcSize];
+unsigned char* t_blue_dst[srcSize];
+unsigned char* t_green_dst[srcSize];
+
+unsigned char* d_red_src;
+unsigned char* d_blue_src;
+unsigned char* d_green_src;
+unsigned char* d_red_dst;
+unsigned char* d_blue_dst;
+unsigned char* d_green_dst;
+checkCudaErrors(cudaMalloc(&d_red_src, srcSize * sizeof(unsigned char)));
+checkCudaErrors(cudaMalloc(&d_blue_src, srcSize * sizeof(unsigned char)));
+checkCudaErrors(cudaMalloc(&d_green_src, srcSize * sizeof(unsigned char)));
+checkCudaErrors(cudaMalloc(&d_red_dst, srcSize * sizeof(unsigned char)));
+checkCudaErrors(cudaMalloc(&d_blue_dst, srcSize * sizeof(unsigned char)));
+checkCudaErrors(cudaMalloc(&d_green_dst, srcSize * sizeof(unsigned char)));
+
 unsigned char* red_src   = new unsigned char[srcSize];
 unsigned char* blue_src  = new unsigned char[srcSize];
 unsigned char* green_src = new unsigned char[srcSize];
-
+unsigned char* red_dst   = new unsigned char[srcSize];
+unsigned char* blue_dst  = new unsigned char[srcSize];
+unsigned char* green_dst = new unsigned char[srcSize];
 for (int i = 0; i < srcSize; ++i) {
   red_src[i]   = h_sourceImg[i].x;
   blue_src[i]  = h_sourceImg[i].y;
   green_src[i] = h_sourceImg[i].z;
-}
-
-unsigned char* red_dst   = new unsigned char[srcSize];
-unsigned char* blue_dst  = new unsigned char[srcSize];
-unsigned char* green_dst = new unsigned char[srcSize];
-
-for (int i = 0; i < srcSize; ++i) {
   red_dst[i]   = h_destImg[i].x;
   blue_dst[i]  = h_destImg[i].y;
   green_dst[i] = h_destImg[i].z;
@@ -373,7 +378,7 @@ for (size_t i = 0; i < srcSize; ++i) {
 //Perform the solve on each color channel
 const size_t numIterations = 800;
 for (size_t i = 0; i < numIterations; ++i) {
-  compute_Iteration(red_dst, strictInteriorPixels, borderPixels,
+  compute_Iteration(red_dst, test_strinct_interior, test_borderpixel,
                    interiorPixelList, numColsSource, blendedValsRed_1, g_red,
                    blendedValsRed_2);
 
@@ -381,7 +386,7 @@ for (size_t i = 0; i < numIterations; ++i) {
 }
 
 for (size_t i = 0; i < numIterations; ++i) {
-  compute_Iteration(blue_dst, strictInteriorPixels, borderPixels,
+  compute_Iteration(blue_dst, test_strinct_interior, test_borderpixel,
                    interiorPixelList, numColsSource, blendedValsBlue_1, g_blue,
                    blendedValsBlue_2);
 
@@ -389,7 +394,7 @@ for (size_t i = 0; i < numIterations; ++i) {
 }
 
 for (size_t i = 0; i < numIterations; ++i) {
-  compute_Iteration(green_dst, strictInteriorPixels, borderPixels,
+  compute_Iteration(green_dst, test_strinct_interior, test_borderpixel,
                    interiorPixelList, numColsSource, blendedValsGreen_1, g_green,
                    blendedValsGreen_2);
 
@@ -414,7 +419,6 @@ for (size_t i = 0; i < interiorPixelList.size(); ++i) {
 }
 
 //wow, we allocated a lot of memory!
-delete[] mask;
 delete[] blendedValsRed_1;
 delete[] blendedValsRed_2;
 delete[] blendedValsBlue_1;
@@ -430,8 +434,8 @@ delete[] blue_src;
 delete[] blue_dst;
 delete[] green_src;
 delete[] green_dst;
-delete[] borderPixels;
-delete[] strictInteriorPixels;
+
+
 //checkResultsEps((unsigned char *)h_reference, (unsigned char *)h_blendedImg, 4 * numRowsSource * numColsSource, 2, .01);
 //delete[] h_reference;
   /* To Recap here are the steps you need to implement
