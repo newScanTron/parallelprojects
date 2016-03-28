@@ -431,14 +431,14 @@ float *blendedValsBlue_2 = new float[srcSize];
 float *blendedValsGreen_1 = new float[srcSize];
 float *blendedValsGreen_2 = new float[srcSize];
 //test stuff
-float t_blendedValsRed_1[srcSize];
-float t_blendedValsRed_2[srcSize];
+float *t_blendedValsRed_1 = new float[srcSize];
+float *t_blendedValsRed_2 = new float[srcSize];
 
-float t_blendedValsBlue_1[srcSize];
-float t_blendedValsBlue_2[srcSize];
+float *t_blendedValsBlue_1 = new float[srcSize];
+float *t_blendedValsBlue_2 = new float[srcSize];
 
-float t_blendedValsGreen_1[srcSize];
-float t_blendedValsGreen_2[srcSize];
+float *t_blendedValsGreen_1 = new float[srcSize];
+float *t_blendedValsGreen_2 = new float[srcSize];
 
 
 float *d_blendedValsRed_1;
@@ -450,12 +450,15 @@ float *d_blendedValsBlue_2;
 float *d_blendedValsGreen_1;
 float *d_blendedValsGreen_2;
 
+size_t floatSize = sizeof(float)*srcSize;
 checkCudaErrors(cudaMalloc(&d_blendedValsRed_1, srcSize * sizeof(float)));
 checkCudaErrors(cudaMalloc(&d_blendedValsRed_2, srcSize * sizeof(float)));
 checkCudaErrors(cudaMalloc(&d_blendedValsBlue_1, srcSize * sizeof(float)));
 checkCudaErrors(cudaMalloc(&d_blendedValsBlue_2, srcSize * sizeof(float)));
 checkCudaErrors(cudaMalloc(&d_blendedValsGreen_1, srcSize * sizeof(float)));
 checkCudaErrors(cudaMalloc(&d_blendedValsGreen_2, srcSize * sizeof(float)));
+
+
 
 addToBlended<<<block_dim, thread_dim>>>(d_blendedValsRed_1,
                                        d_blendedValsRed_2,
@@ -469,61 +472,64 @@ addToBlended<<<block_dim, thread_dim>>>(d_blendedValsRed_1,
                                        numColsSource,
                                        numRowsSource);
 
-checkCudaErrors(cudaMemcpy(&t_blendedValsRed_1, d_blendedValsRed_1, cpySize, cudaMemcpyDeviceToHost));
-checkCudaErrors(cudaMemcpy(&t_blendedValsRed_2, d_blendedValsRed_2, cpySize, cudaMemcpyDeviceToHost));
+checkCudaErrors(cudaMemcpy(t_blendedValsRed_1, d_blendedValsRed_1, floatSize, cudaMemcpyDeviceToHost));
+checkCudaErrors(cudaMemcpy(t_blendedValsRed_2, d_blendedValsRed_2, floatSize, cudaMemcpyDeviceToHost));
 
-checkCudaErrors(cudaMemcpy(&t_blendedValsBlue_1, d_blendedValsBlue_1,  cpySize, cudaMemcpyDeviceToHost));
-checkCudaErrors(cudaMemcpy(&t_blendedValsBlue_2, d_blendedValsBlue_2, cpySize, cudaMemcpyDeviceToHost));
-checkCudaErrors(cudaMemcpy(&t_blendedValsGreen_1, d_blendedValsGreen_1,  cpySize, cudaMemcpyDeviceToHost));
-checkCudaErrors(cudaMemcpy(&t_blendedValsGreen_2, d_blendedValsGreen_2, cpySize, cudaMemcpyDeviceToHost));
+checkCudaErrors(cudaMemcpy(t_blendedValsBlue_1, d_blendedValsBlue_1,  floatSize, cudaMemcpyDeviceToHost));
+checkCudaErrors(cudaMemcpy(t_blendedValsBlue_2, d_blendedValsBlue_2, floatSize, cudaMemcpyDeviceToHost));
+checkCudaErrors(cudaMemcpy(t_blendedValsGreen_1, d_blendedValsGreen_1,  floatSize, cudaMemcpyDeviceToHost));
+checkCudaErrors(cudaMemcpy(t_blendedValsGreen_2, d_blendedValsGreen_2, floatSize, cudaMemcpyDeviceToHost));
 
-//IC is the source image, copy over
-for (size_t i = 0; i < srcSize; ++i) {
-  blendedValsRed_1[i] = t_red_src[i];
-  blendedValsRed_2[i] = t_red_src[i];
-  blendedValsBlue_1[i] = t_blue_src[i];
-  blendedValsBlue_2[i] = t_blue_src[i];
-  blendedValsGreen_1[i] = t_green_src[i];
-  blendedValsGreen_2[i] = t_green_src[i];
-}
-
-for (size_t i = 0; i < srcSize/4; ++i) {
-  if (blendedValsRed_1[i] != t_blendedValsRed_1[i])
-  {
-    std::cout << "nope" << std::endl;
-    std::cout << blendedValsRed_1[i] << " " << t_blendedValsRed_1[i] << std::endl;
-  }
-}
+// //IC is the source image, copy over
+// for (size_t i = 0; i < srcSize; ++i) {
+//   blendedValsRed_1[i] = t_red_src[i];
+//   blendedValsRed_2[i] = t_red_src[i];
+//   blendedValsBlue_1[i] = t_blue_src[i];
+//   blendedValsBlue_2[i] = t_blue_src[i];
+//   blendedValsGreen_1[i] = t_green_src[i];
+//   blendedValsGreen_2[i] = t_green_src[i];
+// }
+//
+// for (size_t i = 0; i < srcSize; ++i) {
+//   if (blendedValsRed_1[i] != t_blendedValsRed_1[i])
+//   {
+//     float ahh = blendedValsRed_1[i];
+//     float pshh = t_blendedValsRed_1[i];
+//     size_t poo = i;
+//
+//     std::cout << "nope " << ahh << " " << pshh << " " << poo << std::endl;
+//   }
+// }
 
 
 //Perform the solve on each color channel
 const size_t numIterations = 800;
 for (size_t i = 0; i < numIterations; ++i) {
   compute_Iteration(t_red_dst, test_strinct_interior, test_borderpixel,
-                   interiorPixelList, numColsSource, blendedValsRed_1, g_red,
-                   blendedValsRed_2);
+                   interiorPixelList, numColsSource, t_blendedValsRed_1, g_red,
+                   t_blendedValsRed_2);
 
-  std::swap(blendedValsRed_1, blendedValsRed_2);
+  std::swap(t_blendedValsRed_1, t_blendedValsRed_2);
 }
 
 for (size_t i = 0; i < numIterations; ++i) {
   compute_Iteration(t_blue_dst, test_strinct_interior, test_borderpixel,
-                   interiorPixelList, numColsSource, blendedValsBlue_1, g_blue,
-                   blendedValsBlue_2);
+                   interiorPixelList, numColsSource, t_blendedValsBlue_1, g_blue,
+                   t_blendedValsBlue_2);
 
-  std::swap(blendedValsBlue_1, blendedValsBlue_2);
+  std::swap(t_blendedValsBlue_1, t_blendedValsBlue_2);
 }
 
 for (size_t i = 0; i < numIterations; ++i) {
   compute_Iteration(t_green_dst, test_strinct_interior, test_borderpixel,
-                   interiorPixelList, numColsSource, blendedValsGreen_1, g_green,
-                   blendedValsGreen_2);
+                   interiorPixelList, numColsSource, t_blendedValsGreen_1, g_green,
+                   t_blendedValsGreen_2);
 
-  std::swap(blendedValsGreen_1, blendedValsGreen_2);
+  std::swap(t_blendedValsGreen_1, t_blendedValsGreen_2);
 }
-std::swap(blendedValsRed_1,   blendedValsRed_2);   //put output into _2
-std::swap(blendedValsBlue_1,  blendedValsBlue_2);  //put output into _2
-std::swap(blendedValsGreen_1, blendedValsGreen_2); //put output into _2
+std::swap(t_blendedValsRed_1,   t_blendedValsRed_2);   //put output into _2
+std::swap(t_blendedValsBlue_1,  t_blendedValsBlue_2);  //put output into _2
+std::swap(t_blendedValsGreen_1, t_blendedValsGreen_2); //put output into _2
 
 //copy the destination image to the output
 memcpy(h_blendedImg, h_destImg, sizeof(uchar4) * srcSize);
@@ -534,9 +540,9 @@ for (size_t i = 0; i < interiorPixelList.size(); ++i) {
 
   unsigned int offset = coord.x * numColsSource + coord.y;
 
-  h_blendedImg[offset].x = blendedValsRed_2[offset];
-  h_blendedImg[offset].y = blendedValsBlue_2[offset];
-  h_blendedImg[offset].z = blendedValsGreen_2[offset];
+  h_blendedImg[offset].x = t_blendedValsRed_2[offset];
+  h_blendedImg[offset].y = t_blendedValsBlue_2[offset];
+  h_blendedImg[offset].z = t_blendedValsGreen_2[offset];
 }
 
 //wow, we allocated a lot of memory!
