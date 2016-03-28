@@ -70,8 +70,14 @@ int BLOCKS;
 __global__
 void histogram_kernel(unsigned int* d_bins, const float* d_in, const int bin_count, const float lum_min, const float lum_max, const int size)
 {
+    int main_id = threadIdx.x + blockDim.x * blockIdx.x;
+    if(main_id >= size)
+        return;
+    float lum_range = lum_max - lum_min;
+    int bin = ((d_in[main_id]-lum_min) / lum_range) * bin_count;
 
-
+    atomicAdd(&d_bins[bin], 1);
+}
 
 __global__
 void scan_kernel( unsigned int* d_bins, int size)

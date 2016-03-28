@@ -487,10 +487,11 @@ for (size_t i = 0; i < srcSize; ++i) {
   blendedValsGreen_2[i] = t_green_src[i];
 }
 
-for (size_t i = 0; i < srcSize; ++i) {
-  if (blendedValsRed_1[i] == t_blendedValsRed_1[i])
+for (size_t i = 0; i < srcSize/4; ++i) {
+  if (blendedValsRed_1[i] != t_blendedValsRed_1[i])
   {
-    std::cout << "nopt" << std::endl;
+    std::cout << "nope" << std::endl;
+    std::cout << blendedValsRed_1[i] << " " << t_blendedValsRed_1[i] << std::endl;
   }
 }
 
