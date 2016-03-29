@@ -605,9 +605,9 @@ for (size_t i = 0; i < numIterations; ++i) {
   std::swap(t_blendedValsGreen_1, t_blendedValsGreen_2);
 }
 //my Iterations
-int eightHun = 1;
+int eightHun = 800;
 dim3 jacobiBlock(28);
-dim3 jacobiThread(listSize/28);
+dim3 jacobiThread(ceil(listSize/28)+1);
 std::cout << listSize/28 << " threads: list -> " << listSize << std::endl;
 for (int i = 0; i < eightHun; i++)
 {
@@ -622,23 +622,53 @@ for (int i = 0; i < eightHun; i++)
                                    d_blendedValsRed_2,
                                    listSize);
     cudaDeviceSynchronize(); checkCudaErrors(cudaGetLastError());
-    checkCudaErrors(cudaMemcpy(d_blendedValsTemp, d_blendedValsRed_1, (srcSize * sizeof(float)), cudaMemcpyDeviceToDevice));
-    checkCudaErrors(cudaMemcpy(d_blendedValsRed_1, d_blendedValsRed_2, (srcSize * sizeof(float)), cudaMemcpyDeviceToDevice));
-    checkCudaErrors(cudaMemcpy(d_blendedValsRed_2, d_blendedValsTemp, (srcSize * sizeof(float)), cudaMemcpyDeviceToDevice));
+  std::swap(d_blendedValsRed_1, d_blendedValsRed_2);
 
+  //kernel launch for red channel
+  jacobi<<<jacobiBlock, jacobiThread>>>(d_blue_dst,
+                                    d_strictInteriorPixels,
+                                    d_borderPixels,
+                                   d_interiorPixelList,
+                                   numColsSource,
+                                   d_blendedValsBlue_1,
+                                   d_g_blue,
+                                   d_blendedValsBlue_2,
+                                   listSize);
+    cudaDeviceSynchronize(); checkCudaErrors(cudaGetLastError());
+  std::swap(d_blendedValsBlue_1, d_blendedValsBlue_2);
+
+    // checkCudaErrors(cudaMemcpy(d_blendedValsTemp, d_blendedValsRed_1, (srcSize * sizeof(float)), cudaMemcpyDeviceToDevice));
+    // checkCudaErrors(cudaMemcpy(d_blendedValsRed_1, d_blendedValsRed_2, (srcSize * sizeof(float)), cudaMemcpyDeviceToDevice));
+    // checkCudaErrors(cudaMemcpy(d_blendedValsRed_2, d_blendedValsTemp, (srcSize * sizeof(float)), cudaMemcpyDeviceToDevice));
+    jacobi<<<jacobiBlock, jacobiThread>>>(d_green_dst,
+                                      d_strictInteriorPixels,
+                                      d_borderPixels,
+                                     d_interiorPixelList,
+                                     numColsSource,
+                                     d_blendedValsGreen_1,
+                                     d_g_green,
+                                     d_blendedValsGreen_2,
+                                     listSize);
+      cudaDeviceSynchronize(); checkCudaErrors(cudaGetLastError());
+    std::swap(d_blendedValsGreen_1, d_blendedValsGreen_2);
 
 
 
 }
 
-//testing my jacobi kernel
-checkCudaErrors(cudaMemcpy(t_blendedValsRed_1, d_blendedValsRed_1, floatSize, cudaMemcpyDeviceToHost));
-checkCudaErrors(cudaMemcpy(t_blendedValsRed_2, d_blendedValsRed_2, floatSize, cudaMemcpyDeviceToHost));
+//copy stuff over and perform the final swap not going to save anyting but kinda clever
+checkCudaErrors(cudaMemcpy(t_blendedValsRed_1, d_blendedValsRed_2, floatSize, cudaMemcpyDeviceToHost));
+checkCudaErrors(cudaMemcpy(t_blendedValsRed_2, d_blendedValsRed_1, floatSize, cudaMemcpyDeviceToHost));
 
+checkCudaErrors(cudaMemcpy(t_blendedValsBlue_1, d_blendedValsBlue_2, floatSize, cudaMemcpyDeviceToHost));
+checkCudaErrors(cudaMemcpy(t_blendedValsBlue_2, d_blendedValsBlue_1, floatSize, cudaMemcpyDeviceToHost));
 
-std::swap(t_blendedValsRed_1,   t_blendedValsRed_2);   //put output into _2
-std::swap(t_blendedValsBlue_1,  t_blendedValsBlue_2);  //put output into _2
-std::swap(t_blendedValsGreen_1, t_blendedValsGreen_2); //put output into _2
+checkCudaErrors(cudaMemcpy(t_blendedValsGreen_1, d_blendedValsGreen_2, floatSize, cudaMemcpyDeviceToHost));
+checkCudaErrors(cudaMemcpy(t_blendedValsGreen_2, d_blendedValsGreen_1, floatSize, cudaMemcpyDeviceToHost));
+
+// std::swap(t_blendedValsRed_1,   t_blendedValsRed_2);   //put output into _2
+// std::swap(t_blendedValsBlue_1,  t_blendedValsBlue_2);  //put output into _2
+// std::swap(t_blendedValsGreen_1, t_blendedValsGreen_2); //put output into _2
 
 //copy the destination image to the output
 memcpy(h_blendedImg, h_destImg, sizeof(uchar4) * srcSize);
