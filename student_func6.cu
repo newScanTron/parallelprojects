@@ -61,9 +61,6 @@
 
     In this assignment we will do 800 iterations.
    */
-
-
-
 #include "utils.h"
 #include <thrust/host_vector.h>
 #include "reference_calc.cpp"
@@ -89,30 +86,29 @@ void compute_G(const unsigned char* const channel,
     g[offset] = sum;
   }
 }
-// __global__
-// void comp_G(const unsigned char* const channel,
-//               float* const g,
-//               const size_t numColsSource,
-//               int size,
-//               const std::vector<uint2> interiorPixelList,
-//               const size_t numRows)
-// {
-//   int main_x = threadIdx.x + blockDim.x * blockIdx.x;
-//   int main_y = threadIdx.y + blockDim.y * blockIdx.y;
-//   int i = main_x + main_y * numColsSource;
-//    if (i < size)
-//    {
-//      uint2 coord = interiorPixelList[i];
-//      unsigned int offset = coord.x * numColsSource + coord.y;
-//
-//      float sum = 4.f * channel[offset];
-//
-//      sum -= (float)channel[offset - 1] + (float)channel[offset + 1];
-//      sum -= (float)channel[offset + numColsSource] + (float)channel[offset - numColsSource];
-//
-//      g[offset] = sum;
-//    }
-// }
+
+__global__
+void comp_G( unsigned char*  channel,
+              float*  g,
+              const size_t numColsSource,
+              int size,
+              uint2 * interiorPixelList)
+{
+  int i = threadIdx.x + blockDim.x * blockIdx.x;
+
+   if (i < size)
+   {
+     uint2 coord = interiorPixelList[i];
+     unsigned int offset = coord.x * numColsSource + coord.y;
+
+     float sum = 4.f * channel[offset];
+
+     sum -= (float)channel[offset - 1] + (float)channel[offset + 1];
+     sum -= (float)channel[offset + numColsSource] + (float)channel[offset - numColsSource];
+
+     g[offset] = sum;
+   }
+}
 __global__
 void addToBlended(float * blendedValsRed_1,
                   float * blendedValsRed_2,
@@ -240,18 +236,11 @@ void jacobi( unsigned char* const dstImg,
                        float*  f,
                        float*  g,
                      float* const f_next,
-                     int listSize
-                    )
-
+                     int listSize)
 {
-
-
 
   int i = threadIdx.x + blockDim.x * blockIdx.x;
 int zero = 0;
-  unsigned int off = interiorPixelList[zero].x * numColsSource + interiorPixelList[zero].y;
-
-
 
   if (i < listSize)
   {
@@ -297,81 +286,37 @@ int zero = 0;
     }
 
     float f_next_val = (blendedSum + borderSum + g[offset]) / 4.f;
-__syncthreads();
     f_next[offset] = min(255.f, max(0.f, f_next_val)); //clip to [0, 255]
   }
 }
 
-//Performs one iteration of the solver
-void compute_Iteration(const unsigned char* const dstImg,
-                      const unsigned char* const strictInteriorPixels,
-                      const unsigned char* const borderPixels,
-                      const std::vector<uint2>& interiorPixelList,
-                      const size_t numColsSource,
-                      const float* const f,
-                      const float* const g,
-                      float* const f_next)
+__global__ void  copyToOutput(uchar4 * d_blendedImg,
+                       float *d_blendedValsRed_2,
+                       float *d_blendedValsBlue_2,
+                       float *d_blendedValsGreen_2,
+                      uint2 * interiorPixelList,
+                       const size_t numColsSource,
+                     int listSize)
 {
-  unsigned int off = interiorPixelList[0].x * numColsSource + interiorPixelList[0].y;
 
-  for (size_t i = 0; i < interiorPixelList.size(); ++i) {
-    float blendedSum = 0.f;
-    float borderSum  = 0.f;
-
+  int i = threadIdx.x + blockDim.x * blockIdx.x;
+  int zero = 0;
+  if (i < listSize)
+  {
     uint2 coord = interiorPixelList[i];
 
     unsigned int offset = coord.x * numColsSource + coord.y;
 
-    //process all 4 neighbor pixels
-    //for each pixel if it is an interior pixel
-    //then we add the previous f, otherwise if it is a
-    //border pixel then we add the value of the destination
-    //image at the border.  These border values are our boundary
-    //conditions.
-    if (strictInteriorPixels[offset - 1]) {
-      blendedSum += f[offset - 1];
-    }
-    else {
-      borderSum += dstImg[offset - 1];
-    }
-
-    if (strictInteriorPixels[offset + 1]) {
-      blendedSum += f[offset + 1];
-    }
-    else {
-      borderSum += dstImg[offset + 1];
-    }
-
-    if (strictInteriorPixels[offset - numColsSource]) {
-      blendedSum += f[offset - numColsSource];
-    }
-    else {
-      borderSum += dstImg[offset - numColsSource];
-    }
-
-    if (strictInteriorPixels[offset + numColsSource]) {
-      blendedSum += f[offset + numColsSource];
-    }
-    else {
-      borderSum += dstImg[offset + numColsSource];
-    }
-
-    float f_next_val = (blendedSum + borderSum + g[offset]) / 4.f;
-
-    f_next[offset] = min(255.f, max(0.f, f_next_val)); //clip to [0, 255]
+    d_blendedImg[offset].x = d_blendedValsRed_2[offset];
+    d_blendedImg[offset].y = d_blendedValsBlue_2[offset];
+    d_blendedImg[offset].z = d_blendedValsGreen_2[offset];
   }
-
 }
-
 void your_blend(const uchar4* const h_sourceImg,  //IN
                 const size_t numRowsSource, const size_t numColsSource,
                 const uchar4* const h_destImg, //IN
                 uchar4* const h_blendedImg) //OUT
 {
-
-
-
-//  uchar4 * h_reference = new uchar4[numRowsSource*numColsSource];
 size_t srcSize = numRowsSource * numColsSource;
 //cuaMalloc all a mask array and aray of boarder and interior items
 unsigned char * d_mask;
@@ -403,9 +348,7 @@ dim3 block_dim(BLOCKS, BLOCKS);
 dim3 thread_dim(ceil(numColsSource/block_dim.x)+1, ceil(numRowsSource/block_dim.y)+1);
 getMask<<<block_dim, thread_dim>>>(d_mask,  d_sourceImg, numColsSource, numRowsSource);
 cudaDeviceSynchronize(); checkCudaErrors(cudaGetLastError());
-/*
-TODO testing memcpy
-*/
+
 size_t cpySize = sizeof(unsigned char) * srcSize;
 checkCudaErrors(cudaMemcpy(&test_mask, d_mask, cpySize, cudaMemcpyDeviceToHost));
 
@@ -414,14 +357,8 @@ cudaDeviceSynchronize(); checkCudaErrors(cudaGetLastError());
 checkCudaErrors(cudaMemcpy(&test_borderpixel, d_borderPixels, cpySize, cudaMemcpyDeviceToHost));
 checkCudaErrors(cudaMemcpy(&test_strinct_interior, d_strictInteriorPixels, cpySize, cudaMemcpyDeviceToHost));
 
-
-
 //this whole bit is still needed for a later part of the serial implemnintaion.
 std::vector<uint2> interiorPixelList;
-
-
-
-
 //the source region in the homework isn't near an image boundary, so we can
 //simplify the conditionals a little...
 for (size_t r = 1; r < numRowsSource - 1; ++r) {
@@ -487,16 +424,22 @@ memset(g_red,   0, srcSize * sizeof(float));
 memset(g_blue,  0, srcSize * sizeof(float));
 memset(g_green, 0, srcSize * sizeof(float));
 
-// checkCudaErrors(cudaMalloc(&t_g_red, srcSize * sizeof(unsigned char)));
-// checkCudaErrors(cudaMalloc(&t_g_blue, srcSize * sizeof(unsigned char)));
-// checkCudaErrors(cudaMalloc(&t_g_green, srcSize * sizeof(unsigned char)));
-//
-// checkCudaErrors(cudaMemcpy(&t_g_red, g_red, cpySize, cudaMemcpyHostToDevice));
-// checkCudaErrors(cudaMemcpy(&t_g_blue, g_blue, cpySize, cudaMemcpyHostToDevice));
-// checkCudaErrors(cudaMemcpy(&t_g_green, g_green, cpySize, cudaMemcpyHostToDevice));
+size_t floatSize = sizeof(float)*srcSize;
 
-// comp_G<<<block_dim, thread_dim>>>(d_red_src, t_g_red, numColsSource, interiorPixelList.size(), interiorPixelList, numRowsSource);
-// cudaDeviceSynchronize(); checkCudaErrors(cudaGetLastError());
+float *d_g_red;
+float *d_g_blue;
+float *d_g_green;
+checkCudaErrors(cudaMalloc(&d_g_red, floatSize));
+checkCudaErrors(cudaMalloc(&d_g_blue, floatSize));
+checkCudaErrors(cudaMalloc(&d_g_green, floatSize));
+checkCudaErrors(cudaMemcpy(d_g_red, g_red, floatSize, cudaMemcpyHostToDevice));
+checkCudaErrors(cudaMemcpy(d_g_blue, g_blue, floatSize, cudaMemcpyHostToDevice));
+checkCudaErrors(cudaMemcpy(d_g_green, g_green, floatSize, cudaMemcpyHostToDevice));
+
+dim3 jacobiBlock(28);
+dim3 jacobiThread(ceil(listSize/28)+1);
+//comp_G<<<jacobiBlock, jacobiThread>>>(d_red_src, d_g_red, numColsSource, listSize, transferList);
+ cudaDeviceSynchronize(); checkCudaErrors(cudaGetLastError());
 
 
 compute_G(t_red_src,   g_red,   numColsSource, interiorPixelList);
@@ -535,7 +478,7 @@ float *d_blendedValsGreen_2;
 float *d_blendedValsTemp;
 float *td_blendedRed_1;
 float *td_blendedRed_2;
-size_t floatSize = sizeof(float)*srcSize;
+
 
 
 
@@ -569,46 +512,12 @@ checkCudaErrors(cudaMemcpy(t_blendedValsBlue_1, d_blendedValsBlue_1,  floatSize,
 checkCudaErrors(cudaMemcpy(t_blendedValsBlue_2, d_blendedValsBlue_2, floatSize, cudaMemcpyDeviceToHost));
 checkCudaErrors(cudaMemcpy(t_blendedValsGreen_1, d_blendedValsGreen_1,  floatSize, cudaMemcpyDeviceToHost));
 checkCudaErrors(cudaMemcpy(t_blendedValsGreen_2, d_blendedValsGreen_2, floatSize, cudaMemcpyDeviceToHost));
-
-float *d_g_red;
-float *d_g_blue;
-float *d_g_green;
-checkCudaErrors(cudaMalloc(&d_g_red, floatSize));
-checkCudaErrors(cudaMalloc(&d_g_blue, floatSize));
-checkCudaErrors(cudaMalloc(&d_g_green, floatSize));
 checkCudaErrors(cudaMemcpy(d_g_red, g_red, floatSize, cudaMemcpyHostToDevice));
 checkCudaErrors(cudaMemcpy(d_g_blue, g_blue, floatSize, cudaMemcpyHostToDevice));
 checkCudaErrors(cudaMemcpy(d_g_green, g_green, floatSize, cudaMemcpyHostToDevice));
 
-
-//Perform the solve on each color channel
-const size_t numIterations = 800;
-for (size_t i = 0; i < numIterations; ++i) {
-  compute_Iteration(t_red_dst, test_strinct_interior, test_borderpixel,
-                   interiorPixelList, numColsSource, t_blendedValsRed_1, g_red,
-                   t_blendedValsRed_2);
-  std::swap(t_blendedValsRed_1, t_blendedValsRed_2);
-
-
-//not sure why this was three loops, clerity i suppose
-  compute_Iteration(t_blue_dst, test_strinct_interior, test_borderpixel,
-                   interiorPixelList, numColsSource, t_blendedValsBlue_1, g_blue,
-                   t_blendedValsBlue_2);
-  std::swap(t_blendedValsBlue_1, t_blendedValsBlue_2);
-
-
-
-
-  compute_Iteration(t_green_dst, test_strinct_interior, test_borderpixel,
-                   interiorPixelList, numColsSource, t_blendedValsGreen_1, g_green,
-                   t_blendedValsGreen_2);
-  std::swap(t_blendedValsGreen_1, t_blendedValsGreen_2);
-}
-//my Iterations
 int eightHun = 800;
-dim3 jacobiBlock(28);
-dim3 jacobiThread(ceil(listSize/28)+1);
-std::cout << listSize/28 << " threads: list -> " << listSize << std::endl;
+
 for (int i = 0; i < eightHun; i++)
 {
   //kernel launch for red channel
@@ -637,9 +546,7 @@ for (int i = 0; i < eightHun; i++)
     cudaDeviceSynchronize(); checkCudaErrors(cudaGetLastError());
   std::swap(d_blendedValsBlue_1, d_blendedValsBlue_2);
 
-    // checkCudaErrors(cudaMemcpy(d_blendedValsTemp, d_blendedValsRed_1, (srcSize * sizeof(float)), cudaMemcpyDeviceToDevice));
-    // checkCudaErrors(cudaMemcpy(d_blendedValsRed_1, d_blendedValsRed_2, (srcSize * sizeof(float)), cudaMemcpyDeviceToDevice));
-    // checkCudaErrors(cudaMemcpy(d_blendedValsRed_2, d_blendedValsTemp, (srcSize * sizeof(float)), cudaMemcpyDeviceToDevice));
+
     jacobi<<<jacobiBlock, jacobiThread>>>(d_green_dst,
                                       d_strictInteriorPixels,
                                       d_borderPixels,
@@ -666,14 +573,13 @@ checkCudaErrors(cudaMemcpy(t_blendedValsBlue_2, d_blendedValsBlue_1, floatSize, 
 checkCudaErrors(cudaMemcpy(t_blendedValsGreen_1, d_blendedValsGreen_2, floatSize, cudaMemcpyDeviceToHost));
 checkCudaErrors(cudaMemcpy(t_blendedValsGreen_2, d_blendedValsGreen_1, floatSize, cudaMemcpyDeviceToHost));
 
-// std::swap(t_blendedValsRed_1,   t_blendedValsRed_2);   //put output into _2
-// std::swap(t_blendedValsBlue_1,  t_blendedValsBlue_2);  //put output into _2
-// std::swap(t_blendedValsGreen_1, t_blendedValsGreen_2); //put output into _2
-
-//copy the destination image to the output
 memcpy(h_blendedImg, h_destImg, sizeof(uchar4) * srcSize);
 
+checkCudaErrors(cudaMemcpy(d_blendedImg, d_destImg, sizeof(uchar4) * srcSize , cudaMemcpyDeviceToDevice));
 //copy computed values for the interior into the output
+
+//copyToOutput<<<jacobiBlock, jacobiThread>>>(d_blendedImg, d_blendedValsRed_2, d_blendedValsBlue_2, d_blendedValsGreen_2, transferList, numColsSource, listSize);
+  cudaDeviceSynchronize(); checkCudaErrors(cudaGetLastError());
 for (size_t i = 0; i < interiorPixelList.size(); ++i) {
   uint2 coord = interiorPixelList[i];
 
@@ -694,12 +600,7 @@ delete[] blendedValsGreen_2;
 delete[] g_red;
 delete[] g_blue;
 delete[] g_green;
-// delete[] red_src;
-// delete[] red_dst;
-// delete[] blue_src;
-// delete[] blue_dst;
-// delete[] green_src;
-// delete[] green_dst;
+
 
 
 //checkResultsEps((unsigned char *)h_reference, (unsigned char *)h_blendedImg, 4 * numRowsSource * numColsSource, 2, .01);
