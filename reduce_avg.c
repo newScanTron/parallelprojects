@@ -28,6 +28,7 @@ int main(int argc, char** argv) {
       int numLines = 0;
       int numFloatNodes = atoi(argv[2]);
       int numIntNodes = atoi(argv[3]);
+      int totalNumNodes = numFloatNodes + numIntNodes;
       fp = fopen(argv[1], "r");
       if (fp == NULL)
           exit(EXIT_FAILURE);
@@ -64,10 +65,13 @@ int main(int argc, char** argv) {
   int world_size;
   MPI_Comm_size(MPI_COMM_WORLD, &world_size);
 //fprintf(stderr, "this should print\n");
+//some variables to check if world_size is not as big as we asked.
+    int offset = totalNumNodes - world_size;
+    int localOffset = numIntNodes - offset;
 
     int eachDoubleSize = (int)(numLines/numFloatNodes);
-    int eachIntSize = (int)(numLines/numIntNodes);
-
+    int eachIntSize = (int)(numLines/localOffset);
+//printf("eachDoubleSize: %d, eachIntSize: %d\n", eachDoubleSize, eachIntSize);
   double local_sum = 0;
   double local_int_sum = 0;
   int u;
@@ -78,14 +82,13 @@ if (world_rank < numFloatNodes)
   int localDoubleEnd = localDoubleStart + eachDoubleSize;
   for (u = localDoubleStart; u < localDoubleEnd; u++) {
     local_sum += doubs[u];
-
   }
   // Print the random numbers on each process
   printf("Local double sum for process %d : %lf, avg = %lf\n",
          world_rank, local_sum, local_sum / eachDoubleSize);
 }
 int j;
-if (world_rank >= numFloatNodes && world_rank < (numFloatNodes + numIntNodes))
+if (world_rank >= numFloatNodes && world_rank < (numFloatNodes + numIntNodes) && world_rank < totalNumNodes)
 {
   int localIntStart = (world_rank - numFloatNodes) * eachIntSize;
   int localIntEnd = localIntStart + eachIntSize;
@@ -94,7 +97,7 @@ if (world_rank >= numFloatNodes && world_rank < (numFloatNodes + numIntNodes))
         local_int_sum += (double)ints[j];
   }
 
-  printf("Local int sum for process %lf : %lf, avg = %lf\n",
+  printf("Local int sum for process %d : %lf, avg = %lf\n",
          world_rank, local_int_sum, (local_int_sum / eachIntSize));
 
 }
@@ -113,6 +116,14 @@ if (world_rank >= numFloatNodes && world_rank < (numFloatNodes + numIntNodes))
            global_sum / (world_size * eachDoubleSize));
     printf("Total int sum = %lf, avg = %lf\n\n", global_int_sum,
                   global_int_sum / (world_size * eachIntSize));
+
+                  FILE *file;
+
+                    file = fopen("avg_output.txt", "w+");
+                   fprintf(file, "%lf\n", global_int_sum);
+                   fprintf(file, "%lf\n", global_sum);
+                    fclose(file);
+
   }
 
   MPI_Barrier(MPI_COMM_WORLD);
