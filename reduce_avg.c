@@ -69,7 +69,7 @@ int main(int argc, char** argv) {
     int eachIntSize = (int)(numLines/numIntNodes);
 
   double local_sum = 0;
-  int local_int_sum = 0;
+  double local_int_sum = 0;
   int u;
 //this little bit uses each node to cacluale their part of the array like you would in cuda.  Im going to leave it in  just for kicks.
 if (world_rank < numFloatNodes)
@@ -89,31 +89,30 @@ if (world_rank >= numFloatNodes && world_rank < (numFloatNodes + numIntNodes))
 {
   int localIntStart = (world_rank - numFloatNodes) * eachIntSize;
   int localIntEnd = localIntStart + eachIntSize;
-  printf("local int start: %d. end : %d", localIntStart, localIntEnd);
   for (j = localIntStart; j < localIntEnd; j++)
   {
-        local_int_sum += ints[j];
+        local_int_sum += (double)ints[j];
   }
 
-  printf("Local int sum for process %d : %d, avg = %d\n",
-         world_rank, local_int_sum, (int)(local_int_sum / eachIntSize));
+  printf("Local int sum for process %lf : %lf, avg = %lf\n",
+         world_rank, local_int_sum, (local_int_sum / eachIntSize));
 
 }
 
   // Reduce all of the local sums into the global sum
   double global_sum;
-  int global_int_sum;
+  double global_int_sum;
   MPI_Reduce(&local_sum, &global_sum, 1, MPI_DOUBLE, MPI_SUM, 0,
              MPI_COMM_WORLD);
-  MPI_Reduce(&local_int_sum, &global_int_sum, 1, MPI_INT, MPI_SUM, 0,
+  MPI_Reduce(&local_int_sum, &global_int_sum, 1, MPI_DOUBLE, MPI_SUM, 0,
                         MPI_COMM_WORLD);
 
   // Print the result
   if (world_rank == 0) {
     printf("\nTotal sum = %lf, avg = %lf\n", global_sum,
            global_sum / (world_size * eachDoubleSize));
-    printf("Total int sum = %d, avg = %d\n\n", global_int_sum,
-                  (int)global_int_sum / (world_size * eachDoubleSize));
+    printf("Total int sum = %lf, avg = %lf\n\n", global_int_sum,
+                  global_int_sum / (world_size * eachIntSize));
   }
 
   MPI_Barrier(MPI_COMM_WORLD);
