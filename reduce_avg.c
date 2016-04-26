@@ -26,8 +26,8 @@ int main(int argc, char** argv) {
       size_t len = 0;
       ssize_t read;
       int numLines = 0;
-      int numFloatNodes = atoi(argv[2]);
-      int numIntNodes = atoi(argv[3]);
+      int numFloatNodes = atoi(argv[3]);
+      int numIntNodes = atoi(argv[2]);
       int totalNumNodes = numFloatNodes + numIntNodes;
       fp = fopen(argv[1], "r");
       if (fp == NULL)
@@ -73,7 +73,9 @@ int main(int argc, char** argv) {
     int eachIntSize = (int)(numLines/localOffset);
 //printf("eachDoubleSize: %d, eachIntSize: %d\n", eachDoubleSize, eachIntSize);
   double local_sum = 0;
-  double local_int_sum = 0;
+  int local_int_sum = 0;
+  double local_dub_avg = 0;
+  double local_int_avg = 0;
   int u;
 //this little bit uses each node to cacluale their part of the array like you would in cuda.  Im going to leave it in  just for kicks.
 if (world_rank < numFloatNodes)
@@ -83,9 +85,10 @@ if (world_rank < numFloatNodes)
   for (u = localDoubleStart; u < localDoubleEnd; u++) {
     local_sum += doubs[u];
   }
+  local_dub_avg = local_sum / eachDoubleSize;
   // Print the random numbers on each process
   printf("Local double sum for process %d : %lf, avg = %lf\n",
-         world_rank, local_sum, local_sum / eachDoubleSize);
+         world_rank, local_sum, local_dub_avg );
 }
 int j;
 if (world_rank >= numFloatNodes && world_rank < (numFloatNodes + numIntNodes) && world_rank < totalNumNodes)
@@ -94,34 +97,33 @@ if (world_rank >= numFloatNodes && world_rank < (numFloatNodes + numIntNodes) &&
   int localIntEnd = localIntStart + eachIntSize;
   for (j = localIntStart; j < localIntEnd; j++)
   {
-        local_int_sum += (double)ints[j];
+        local_int_sum += ints[j];
   }
-
-  printf("Local int sum for process %d : %lf, avg = %lf\n",
-         world_rank, local_int_sum, (local_int_sum / eachIntSize));
-
+  local_int_avg = ((double)local_int_sum / eachIntSize);
+  printf("Local int sum for process %d : %lf, avg = %lf\n", world_rank, local_int_sum, local_int_avg);
 }
 
   // Reduce all of the local sums into the global sum
   double global_sum;
-  double global_int_sum;
+  int global_int_sum;
   MPI_Reduce(&local_sum, &global_sum, 1, MPI_DOUBLE, MPI_SUM, 0,
              MPI_COMM_WORLD);
-  MPI_Reduce(&local_int_sum, &global_int_sum, 1, MPI_DOUBLE, MPI_SUM, 0,
+  MPI_Reduce(&local_int_sum, &global_int_sum, 1, MPI_INT, MPI_SUM, 0,
                         MPI_COMM_WORLD);
 
   // Print the result
   if (world_rank == 0) {
-    printf("\nTotal sum = %lf, avg = %lf\n", global_sum,
-           global_sum / (world_size * eachDoubleSize));
-    printf("Total int sum = %lf, avg = %lf\n\n", global_int_sum,
-                  global_int_sum / (world_size * eachIntSize));
+    double global_dub_avg = global_sum / numLines;
+    double global_int_avg = global_int_sum / numLines;
+
+    printf("\nTotal sum = %lf, avg = %lf\n", global_sum, global_dub_avg);
+    printf("Total int sum = %lf, avg = %lf\n\n", global_int_sum, global_int_avg);
 
                   FILE *file;
 
                     file = fopen("avg_output.txt", "w+");
-                   fprintf(file, "%lf\n", global_int_sum);
-                   fprintf(file, "%lf\n", global_sum);
+                   fprintf(file, "%lf\n", global_int_avg);
+                   fprintf(file, "%lf\n", global_dub_avg);
                     fclose(file);
 
   }
