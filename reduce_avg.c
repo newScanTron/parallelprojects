@@ -13,52 +13,7 @@
 #include <string.h>
 #include <assert.h>
 #include <math.h>
-char** str_split(char* a_str, const char a_delim)
-{
-    char** result    = 0;
-    size_t count     = 0;
-    char* tmp        = a_str;
-    char* last_comma = 0;
-    char delim[2];
-    delim[0] = a_delim;
-    delim[1] = 0;
 
-    /* Count how many elements will be extracted. */
-    while (*tmp)
-    {
-        if (a_delim == *tmp)
-        {
-            count++;
-            last_comma = tmp;
-        }
-        tmp++;
-    }
-
-    /* Add space for trailing token. */
-    count += last_comma < (a_str + strlen(a_str) - 1);
-
-    /* Add space for terminating null string so caller
- *        knows where the list of returned strings ends. */
-    count++;
-    result = malloc(sizeof(char*) * count);
-
-    if (result)
-    {
-        size_t idx  = 0;
-        char* token = strtok(a_str, delim);
-
-        while (token)
-        {
-            assert(idx < count);
-            *(result + idx++) = strdup(token);
-            token = strtok(0, delim);
-        }
-        assert(idx == count - 1);
-        *(result + idx) = 0;
-    }
-
-    return result;
-}
 // Creates an array of random numbers. Each number has a value from 0 - 1
 int main(int argc, char** argv) {
   if (argc != 2) {
@@ -70,9 +25,6 @@ int main(int argc, char** argv) {
       char * line = NULL;
       size_t len = 0;
       ssize_t read;
-	    float * nums;
-	    int * intNums;
-      int arraySize;
       int numLines = 0;
       fp = fopen(argv[1], "r");
       if (fp == NULL)
@@ -96,50 +48,23 @@ int main(int argc, char** argv) {
            numLines++;
       }
       fclose(fp);
-printf ( "dope brow: %lf", doubs[0]);
-    char** tokens;
-    tokens = str_split(line, ',');
+      //some sweet cleanup, not sure the line check is nessisary but whatever its in all the examples.s
+      	 if (line)
+                free(line);
+//    char** tokens;
+//    tokens = str_split(line, ',');
 
-    if (tokens)
-    {
-        int i;
-      float  chocFloat;
+int i = 0;
+
+int intNums[numLines];
+    //  int arrayLength = (sizeof(doubs)/sizeof(double));
+  //  printf("array Length: %d", arrayLength);
 //	printf(" num of tokens %d\n " , (int)(sizeof(char) * tokens));
-	 for (i = 0; *(tokens + i); i++)
+	 for (i = 0; i < numLines; i++)
         {
-          //  printf("month=[%s]\n", *(tokens + i));
-        	chocFloat = atof(*(tokens + i));
+          printf("doubs; %0.4lf, \n" , doubs[i]);
+          intNums[i] = (int)floor(doubs[i]);
 	        }
-        printf("tokens %d\n",i);
-
-	int j;
-	nums = malloc(i * sizeof(float));
-	intNums = malloc(i * sizeof(int));
-  arraySize = i;
-
-//array to fill each float as a float also going to do out conversion to ints
-	for (j = 0; j < i; j++)
-	{
-		chocFloat = atof(*(tokens + j));
-		nums[j] = chocFloat;
-
-	 	intNums[j] = floor(chocFloat);
-		free(*(tokens + j));
-
-	}
-	free(tokens);
-
-    }
-
-
-//some sweet cleanup
-	 if (line)
-          free(line);
-
-
-//fprintf(stderr, "this should print\n");
-
-//fprintf(stderr, "this should print also\n");
 
   MPI_Init(&argc, &argv);
 //fprintf(stderr, "this should print\n");
@@ -152,16 +77,16 @@ printf ( "dope brow: %lf", doubs[0]);
   MPI_Comm_size(MPI_COMM_WORLD, &world_size);
 //fprintf(stderr, "this should print\n");
 
-    int eachSize = (int)(arraySize/world_size);
+    int eachSize = (int)(numLines/world_size);
 
   // Create a random array of elements on all processes.
   srand(time(NULL)*world_rank);   // Seed the random number generator to get different results each time for each processor
-  float *rand_nums = NULL;
+  double *rand_nums = NULL;
  // rand_nums = create_rand_nums(num_elements_per_proc);
-	rand_nums = nums;
+	rand_nums = doubs;
  //fprintf(stderr, "we got right before the first for lopp %d\n", world_size);
   // Sum the numbers locally
-  float local_sum = 0;
+  double local_sum = 0;
   int local_int_sum = 0;
   int u;
 
@@ -173,27 +98,25 @@ printf ( "dope brow: %lf", doubs[0]);
   }
 
   // Print the random numbers on each process
-  printf("Local sum for process %d - %f, avg = %f\n",
+  printf("Local sum for process %d - %lf, avg = %f\n",
          world_rank, local_sum, local_sum / eachSize);
 
   // Reduce all of the local sums into the global sum
-  float global_sum;
+  double global_sum;
   int global_int_sum;
-  MPI_Reduce(&local_sum, &global_sum, 1, MPI_FLOAT, MPI_SUM, 0,
+  MPI_Reduce(&local_sum, &global_sum, 1, MPI_DOUBLE, MPI_SUM, 0,
              MPI_COMM_WORLD);
   MPI_Reduce(&local_int_sum, &global_int_sum, 1, MPI_INT, MPI_SUM, 0,
                         MPI_COMM_WORLD);
 
   // Print the result
   if (world_rank == 0) {
-    printf("Total sum = %f, avg = %f\n", global_sum,
+    printf("Total sum = %lf, avg = %lf\n", global_sum,
            global_sum / (world_size * eachSize));
     printf("Total int sum = %d, avg = %d\n", global_int_sum,
                   global_int_sum / (world_size * eachSize));
   }
 
-  // Clean up
-  free(rand_nums);
 
 
   MPI_Barrier(MPI_COMM_WORLD);
