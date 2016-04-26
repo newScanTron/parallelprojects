@@ -15,3 +15,23 @@ ranking complexity of both O(n)
 
 to change something to from scatter to gather almost always requires preprocessing
 and will depend on the data if its worth your while.  
+
+
+4/ 21 notes
+
+each letter is a tw0 byte part of the vector
+
+then mask for each type repetes 00 for A 01 or C and so on.
+
+then how many 1 in the array are how many A  using Xor
+
+then mm_xo_si128,
+
+shift right mm_srli_si128;
+or mm_srli_si128;
+
+sub mm_subs_epi8;
+
+
+
+v01 
