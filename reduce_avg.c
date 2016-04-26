@@ -16,8 +16,8 @@
 
 // Creates an array of random numbers. Each number has a value from 0 - 1
 int main(int argc, char** argv) {
-  if (argc != 2) {
-    fprintf(stderr, "Usage: filename\n");
+  if (argc != 4) {
+    fprintf(stderr, "Usage: you done it wrong. date file name, number of foat nodes, number of integer nodes.\n");
     exit(1);
   }
 
@@ -26,45 +26,33 @@ int main(int argc, char** argv) {
       size_t len = 0;
       ssize_t read;
       int numLines = 0;
+      int numFloatNodes = atoi(argv[2]);
+      int numIntNodes = atoi(argv[3]);
       fp = fopen(argv[1], "r");
       if (fp == NULL)
           exit(EXIT_FAILURE);
-
+//c is just a weter languane; two loops are needed.
       while ((read = getline(&line, &len, fp)) != -1) {
-          // printf("Retrieved line of length %zu :\n", read);
-          // printf("%s", line);
           numLines++;
       }
+      //going to create an array of doubles to process and convert into ints.
       double doubs[numLines];
+      int ints[numLines];
+//clean up the file. and then re-open it cus i just can't read about better ways.
         fclose(fp);
         fp = fopen(argv[1], "r");
         if (fp == NULL)
             exit(EXIT_FAILURE);
             numLines = 0;
       while ((read = getline(&line, &len, fp)) != -1) {
-          // printf("Retrieved line of length %zu :\n", read);
-           printf("wee %s", line);
            doubs[numLines] = atof(line);
+           ints[numLines] = (int)floor(doubs[numLines]);
            numLines++;
       }
       fclose(fp);
       //some sweet cleanup, not sure the line check is nessisary but whatever its in all the examples.s
       	 if (line)
                 free(line);
-//    char** tokens;
-//    tokens = str_split(line, ',');
-
-int i = 0;
-
-int intNums[numLines];
-    //  int arrayLength = (sizeof(doubs)/sizeof(double));
-  //  printf("array Length: %d", arrayLength);
-//	printf(" num of tokens %d\n " , (int)(sizeof(char) * tokens));
-	 for (i = 0; i < numLines; i++)
-        {
-          printf("doubs; %0.4lf, \n" , doubs[i]);
-          intNums[i] = (int)floor(doubs[i]);
-	        }
 
   MPI_Init(&argc, &argv);
 //fprintf(stderr, "this should print\n");
@@ -77,29 +65,40 @@ int intNums[numLines];
   MPI_Comm_size(MPI_COMM_WORLD, &world_size);
 //fprintf(stderr, "this should print\n");
 
-    int eachSize = (int)(numLines/world_size);
+    int eachDoubleSize = (int)(numLines/numFloatNodes);
+    int eachIntSize = (int)(numLines/numIntNodes);
 
-  // Create a random array of elements on all processes.
-  srand(time(NULL)*world_rank);   // Seed the random number generator to get different results each time for each processor
-  double *rand_nums = NULL;
- // rand_nums = create_rand_nums(num_elements_per_proc);
-	rand_nums = doubs;
- //fprintf(stderr, "we got right before the first for lopp %d\n", world_size);
-  // Sum the numbers locally
   double local_sum = 0;
   int local_int_sum = 0;
   int u;
+//this little bit uses each node to cacluale their part of the array like you would in cuda.  Im going to leave it in  just for kicks.
+if (world_rank < numFloatNodes)
+{
+  int localDoubleStart = world_rank * eachDoubleSize;
+  int localDoubleEnd = localDoubleStart + eachDoubleSize;
+  for (u = localDoubleStart; u < localDoubleEnd; u++) {
+    local_sum += doubs[u];
 
-  int localStart = world_rank * eachSize;
-  int localEnd = localStart + eachSize;
-  for (u = localStart; u < localEnd; u++) {
-    local_sum += rand_nums[u];
-    local_int_sum += intNums[u];
+  }
+  // Print the random numbers on each process
+  printf("Local double sum for process %d : %lf, avg = %lf\n",
+         world_rank, local_sum, local_sum / eachDoubleSize);
+}
+int j;
+if (world_rank >= numFloatNodes && world_rank < (numFloatNodes + numIntNodes))
+{
+  int localIntStart = (world_rank - numFloatNodes) * eachIntSize;
+  int localIntEnd = localIntStart + eachIntSize;
+  printf("local int start: %d. end : %d", localIntStart, localIntEnd);
+  for (j = localIntStart; j < localIntEnd; j++)
+  {
+        local_int_sum += ints[j];
   }
 
-  // Print the random numbers on each process
-  printf("Local sum for process %d - %lf, avg = %f\n",
-         world_rank, local_sum, local_sum / eachSize);
+  printf("Local int sum for process %d : %d, avg = %d\n",
+         world_rank, local_int_sum, (int)(local_int_sum / eachIntSize));
+
+}
 
   // Reduce all of the local sums into the global sum
   double global_sum;
@@ -111,13 +110,11 @@ int intNums[numLines];
 
   // Print the result
   if (world_rank == 0) {
-    printf("Total sum = %lf, avg = %lf\n", global_sum,
-           global_sum / (world_size * eachSize));
-    printf("Total int sum = %d, avg = %d\n", global_int_sum,
-                  global_int_sum / (world_size * eachSize));
+    printf("\nTotal sum = %lf, avg = %lf\n", global_sum,
+           global_sum / (world_size * eachDoubleSize));
+    printf("Total int sum = %d, avg = %d\n\n", global_int_sum,
+                  (int)global_int_sum / (world_size * eachDoubleSize));
   }
-
-
 
   MPI_Barrier(MPI_COMM_WORLD);
   MPI_Finalize();
