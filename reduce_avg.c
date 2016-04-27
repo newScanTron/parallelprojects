@@ -1,12 +1,4 @@
-// Author: Wes Kendall
-// Copyright 2013 www.mpitutorial.com
-// This code is provided freely with the tutorials on mpitutorial.com. Feel
-// free to modify it for your own use. Any distribution of the code must
-// either provide a link to www.mpitutorial.com or keep this header intact.
-//
-// Program that computes the average of an array of elements in parallel using
-// MPI_Reduce.
-//
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <mpi.h>
@@ -119,13 +111,12 @@ if (world_rank >= numFloatNodes && world_rank < (numFloatNodes + numIntNodes) &&
     printf("\nTotal sum = %lf, avg = %lf\n", global_sum, global_dub_avg);
     printf("Total int sum = %lf, avg = %lf\n\n", global_int_sum, global_int_avg);
 
-                  FILE *file;
+    FILE *file;
 
-                    file = fopen("avg_output.txt", "w+");
-                   fprintf(file, "%lf\n", global_int_avg);
-                   fprintf(file, "%lf\n", global_dub_avg);
-                    fclose(file);
-
+    file = fopen("avg_output.txt", "w+");
+   fprintf(file, "%lf\n", global_int_avg);
+   fprintf(file, "%lf\n", global_dub_avg);
+    fclose(file);
   }
 
   MPI_Barrier(MPI_COMM_WORLD);
